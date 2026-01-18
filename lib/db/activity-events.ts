@@ -1,9 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { ActivityEvent } from '@/lib/types'
-import { Database, ActivityEventRow, ActivityEventInsert } from './types'
+import { ActivityEventRow, ActivityEventInsert } from './types'
 import { dbActivityEventToApp, appActivityEventToDb } from './utils'
 
-type Supabase = SupabaseClient<Database>
+type Supabase = SupabaseClient<any>
 
 export async function getActivityEvents(supabase: Supabase, userId: string, limit?: number): Promise<ActivityEvent[]> {
   let query = supabase
@@ -31,7 +31,7 @@ export async function createActivityEvent(supabase: Supabase, event: ActivityEve
   
   const { data, error } = await supabase
     .from('activity_events')
-    .insert(insertData)
+    .insert(insertData as any)
     .select()
     .single()
 

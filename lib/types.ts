@@ -123,6 +123,7 @@ export interface CallbackTask {
   attempts: CallbackAttempt[]
   maxAttempts: number
   nextAttemptAt?: Date
+  conversationId?: string // For matching webhooks from Eleven Labs
 }
 
 export interface ActivityEvent {

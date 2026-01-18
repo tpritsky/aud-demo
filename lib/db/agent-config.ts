@@ -1,9 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { AgentConfig } from '@/lib/types'
-import { Database, AgentConfigRow, AgentConfigInsert, AgentConfigUpdate } from './types'
+import { AgentConfigRow, AgentConfigInsert, AgentConfigUpdate } from './types'
 import { dbAgentConfigToApp, appAgentConfigToDb } from './utils'
 
-type Supabase = SupabaseClient<Database>
+type Supabase = SupabaseClient<any>
 
 export async function getAgentConfig(supabase: Supabase, userId: string): Promise<AgentConfig | null> {
   const { data, error } = await supabase
@@ -28,7 +28,7 @@ export async function createAgentConfig(supabase: Supabase, config: AgentConfig,
   
   const { data, error } = await supabase
     .from('agent_config')
-    .insert(insertData)
+    .insert(insertData as any)
     .select()
     .single()
 
@@ -56,9 +56,9 @@ export async function updateAgentConfig(
   if (config.elevenLabsAgentId !== undefined) updateData.eleven_labs_agent_id = config.elevenLabsAgentId || null
   if (config.elevenLabsOutboundAgentId !== undefined) updateData.eleven_labs_outbound_agent_id = config.elevenLabsOutboundAgentId || null
   if (config.elevenLabsPhoneNumberId !== undefined) updateData.eleven_labs_phone_number_id = config.elevenLabsPhoneNumberId || null
-  if (config.allowedIntents !== undefined) updateData.allowed_intents = config.allowedIntents as Record<string, unknown>
-  if (config.escalationRules !== undefined) updateData.escalation_rules = config.escalationRules as Record<string, unknown>
-  if (config.callbackSettings !== undefined) updateData.callback_settings = config.callbackSettings as Record<string, unknown>
+  if (config.allowedIntents !== undefined) updateData.allowed_intents = config.allowedIntents as unknown as Record<string, unknown>
+  if (config.escalationRules !== undefined) updateData.escalation_rules = config.escalationRules as unknown as Record<string, unknown>
+  if (config.callbackSettings !== undefined) updateData.callback_settings = config.callbackSettings as unknown as Record<string, unknown>
 
   // Try to update first
   const { data: updateData_result, error: updateError } = await supabase

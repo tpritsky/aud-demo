@@ -1,9 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { ProactiveSequence } from '@/lib/types'
-import { Database, ProactiveSequenceRow, ProactiveSequenceInsert, ProactiveSequenceUpdate } from './types'
+import { ProactiveSequenceRow, ProactiveSequenceInsert, ProactiveSequenceUpdate } from './types'
 import { dbSequenceToApp, appSequenceToDb } from './utils'
 
-type Supabase = SupabaseClient<Database>
+type Supabase = SupabaseClient<any>
 
 export async function getSequences(supabase: Supabase, userId: string): Promise<ProactiveSequence[]> {
   const { data, error } = await supabase
@@ -66,7 +66,7 @@ export async function updateSequence(
   
   if (updates.name !== undefined) updateData.name = updates.name
   if (updates.audienceTag !== undefined) updateData.audience_tag = updates.audienceTag
-  if (updates.steps !== undefined) updateData.steps = updates.steps as Record<string, unknown>[]
+  if (updates.steps !== undefined) updateData.steps = updates.steps as unknown as Record<string, unknown>[]
   if (updates.active !== undefined) updateData.active = updates.active
 
   const { data, error } = await supabase

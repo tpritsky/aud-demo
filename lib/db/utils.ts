@@ -36,7 +36,7 @@ export function dbPatientToApp(row: PatientRow): Patient {
     riskScore: row.risk_score,
     riskReasons: row.risk_reasons,
     lastContactAt: row.last_contact_at ? new Date(row.last_contact_at) : new Date(),
-    adoptionSignals: (row.adoption_signals as AdoptionSignals) || {
+    adoptionSignals: (row.adoption_signals as unknown as AdoptionSignals) || {
       woreToday: null,
       estimatedHoursWorn: null,
       comfortIssues: false,
@@ -60,7 +60,7 @@ export function appPatientToDb(patient: Patient, userId: string): Omit<PatientRo
     risk_score: patient.riskScore,
     risk_reasons: patient.riskReasons,
     last_contact_at: patient.lastContactAt.toISOString(),
-    adoption_signals: patient.adoptionSignals,
+    adoption_signals: patient.adoptionSignals as unknown as Record<string, unknown>,
     proactive_check_ins_enabled: patient.proactiveCheckInsEnabled,
     selected_sequence_ids: patient.selectedSequenceIds || null,
     device_brand: patient.deviceBrand || null,
@@ -83,9 +83,9 @@ export function dbCallToApp(row: CallRow): Call {
     durationSec: row.duration_sec,
     sentiment: row.sentiment as Call['sentiment'],
     escalated: row.escalated,
-    summary: row.summary as Call['summary'],
+    summary: row.summary as unknown as Call['summary'],
     transcript: row.transcript,
-    entities: (row.entities as Call['entities']) || {},
+    entities: (row.entities as unknown as Call['entities']) || {},
   }
 }
 
@@ -102,9 +102,9 @@ export function appCallToDb(call: Call, userId: string): Omit<CallRow, 'created_
     duration_sec: call.durationSec,
     sentiment: call.sentiment,
     escalated: call.escalated,
-    summary: call.summary,
+    summary: call.summary as unknown as Record<string, unknown>,
     transcript: call.transcript,
-    entities: call.entities,
+    entities: call.entities as unknown as Record<string, unknown>,
     user_id: userId,
   }
 }
@@ -114,7 +114,7 @@ export function dbSequenceToApp(row: ProactiveSequenceRow): ProactiveSequence {
     id: row.id,
     name: row.name,
     audienceTag: row.audience_tag as ProactiveSequence['audienceTag'],
-    steps: row.steps as SequenceStep[],
+    steps: row.steps as unknown as SequenceStep[],
     active: row.active,
   }
 }
@@ -123,7 +123,7 @@ export function appSequenceToDb(sequence: ProactiveSequence, userId: string): Om
   return {
     name: sequence.name,
     audience_tag: sequence.audienceTag,
-    steps: sequence.steps as Record<string, unknown>[],
+    steps: sequence.steps as unknown as Record<string, unknown>[],
     active: sequence.active,
     user_id: userId,
   }
@@ -161,6 +161,7 @@ export function dbCallbackTaskToApp(row: CallbackTaskRow, attempts: CallbackAtte
     attempts,
     maxAttempts: row.max_attempts,
     nextAttemptAt: row.next_attempt_at ? new Date(row.next_attempt_at) : undefined,
+    conversationId: row.conversation_id || undefined,
   }
 }
 
@@ -176,7 +177,7 @@ export function appCallbackTaskToDb(task: CallbackTask, userId: string): Omit<Ca
     call_id: task.callId || null,
     max_attempts: task.maxAttempts,
     next_attempt_at: task.nextAttemptAt?.toISOString() || null,
-    conversation_id: null, // Set when call is triggered
+    conversation_id: task.conversationId || null,
     user_id: userId,
   }
 }
@@ -279,9 +280,9 @@ export function dbAgentConfigToApp(row: AgentConfigRow): AgentConfig {
     elevenLabsAgentId: row.eleven_labs_agent_id || undefined,
     elevenLabsOutboundAgentId: row.eleven_labs_outbound_agent_id || undefined,
     elevenLabsPhoneNumberId: row.eleven_labs_phone_number_id || undefined,
-    allowedIntents: row.allowed_intents as AgentConfig['allowedIntents'],
-    escalationRules: row.escalation_rules as AgentConfig['escalationRules'],
-    callbackSettings: row.callback_settings as AgentConfig['callbackSettings'],
+    allowedIntents: row.allowed_intents as unknown as AgentConfig['allowedIntents'],
+    escalationRules: row.escalation_rules as unknown as AgentConfig['escalationRules'],
+    callbackSettings: row.callback_settings as unknown as AgentConfig['callbackSettings'],
   }
 }
 
@@ -297,8 +298,8 @@ export function appAgentConfigToDb(config: AgentConfig, userId: string): Omit<Ag
     eleven_labs_agent_id: config.elevenLabsAgentId || null,
     eleven_labs_outbound_agent_id: config.elevenLabsOutboundAgentId || null,
     eleven_labs_phone_number_id: config.elevenLabsPhoneNumberId || null,
-    allowed_intents: config.allowedIntents as Record<string, unknown>,
-    escalation_rules: config.escalationRules as Record<string, unknown>,
-    callback_settings: config.callbackSettings as Record<string, unknown>,
+    allowed_intents: config.allowedIntents as unknown as Record<string, unknown>,
+    escalation_rules: config.escalationRules as unknown as Record<string, unknown>,
+    callback_settings: config.callbackSettings as unknown as Record<string, unknown>,
   }
 }

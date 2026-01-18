@@ -12,7 +12,7 @@ import {
   Calendar,
   UserPlus,
 } from 'lucide-react'
-import { ActivityEvent } from '@/lib/types'
+import { ActivityEvent, CallOutcome } from '@/lib/types'
 
 interface PatientTimelineProps {
   patientId: string
@@ -54,6 +54,15 @@ const eventConfig: Record<
   },
 }
 
+type TimelineItem = {
+  id: string
+  type: ActivityEvent['type']
+  description: string
+  timestamp: Date
+  isCall: boolean
+  outcome?: CallOutcome
+}
+
 export function PatientTimeline({ patientId }: PatientTimelineProps) {
   const { activityEvents, calls } = useAppStore()
 
@@ -62,7 +71,7 @@ export function PatientTimeline({ patientId }: PatientTimelineProps) {
   const patientCalls = calls.filter((c) => c.patientId === patientId)
 
   // Combine into timeline
-  const timelineItems = [
+  const timelineItems: TimelineItem[] = [
     ...patientEvents.map((e) => ({
       id: e.id,
       type: e.type,
@@ -120,7 +129,7 @@ export function PatientTimeline({ patientId }: PatientTimelineProps) {
                         <span className="text-xs text-muted-foreground">
                           ({formatDistanceToNow(item.timestamp)})
                         </span>
-                        {'outcome' in item && item.outcome && (
+                        {item.outcome && (
                           <Badge variant="secondary" className="text-xs">
                             {item.outcome}
                           </Badge>

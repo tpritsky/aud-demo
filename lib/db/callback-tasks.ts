@@ -1,9 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { CallbackTask, CallbackAttempt } from '@/lib/types'
-import { Database, CallbackTaskRow, CallbackTaskInsert, CallbackTaskUpdate, CallbackAttemptRow, CallbackAttemptInsert } from './types'
+import { CallbackTaskRow, CallbackTaskInsert, CallbackTaskUpdate, CallbackAttemptRow, CallbackAttemptInsert } from './types'
 import { dbCallbackTaskToApp, appCallbackTaskToDb, dbCallbackAttemptToApp, appCallbackAttemptToDb } from './utils'
 
-type Supabase = SupabaseClient<Database>
+type Supabase = SupabaseClient<any>
 
 export async function getCallbackTasks(supabase: Supabase, userId: string): Promise<CallbackTask[]> {
   const { data, error } = await supabase

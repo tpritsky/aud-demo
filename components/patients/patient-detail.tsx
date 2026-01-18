@@ -23,7 +23,6 @@ import { AdoptionSignalsWidget } from './adoption-signals-widget'
 import { PatientTimeline } from './patient-timeline'
 import { ScheduleCallbackForm } from './schedule-callback-form'
 import { CallDetailDrawer } from '@/components/calls/call-detail-drawer'
-import { useToast } from 'sonner'
 import {
   User,
   Phone,

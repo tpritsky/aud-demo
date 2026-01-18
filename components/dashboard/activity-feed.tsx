@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/lib/store'
 import { formatDistanceToNow } from '@/lib/format'
-import { Phone, CheckCircle2, AlertTriangle, PhoneCall as PhoneCallback, Calendar, ArrowRight } from 'lucide-react'
+import { Phone, CheckCircle2, AlertTriangle, PhoneCall as PhoneCallback, Calendar, ArrowRight, UserPlus } from 'lucide-react'
 import { ActivityEvent } from '@/lib/types'
 import Link from 'next/link'
 
@@ -37,6 +37,11 @@ const eventConfig: Record<
     icon: Calendar,
     color: 'text-info',
     bgColor: 'bg-info/10',
+  },
+  new_patient: {
+    icon: UserPlus,
+    color: 'text-primary',
+    bgColor: 'bg-primary/10',
   },
 }
 

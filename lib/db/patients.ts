@@ -1,9 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { Patient } from '@/lib/types'
-import { Database, PatientRow, PatientInsert, PatientUpdate } from './types'
+import { PatientRow, PatientInsert, PatientUpdate } from './types'
 import { dbPatientToApp, appPatientToDb } from './utils'
 
-type Supabase = SupabaseClient<Database>
+type Supabase = SupabaseClient<any>
 
 export async function getPatients(supabase: Supabase, userId: string): Promise<Patient[]> {
   const { data, error } = await supabase
@@ -71,7 +71,7 @@ export async function updatePatient(
   if (updates.riskScore !== undefined) updateData.risk_score = updates.riskScore
   if (updates.riskReasons !== undefined) updateData.risk_reasons = updates.riskReasons
   if (updates.lastContactAt !== undefined) updateData.last_contact_at = updates.lastContactAt.toISOString()
-  if (updates.adoptionSignals !== undefined) updateData.adoption_signals = updates.adoptionSignals as Record<string, unknown>
+  if (updates.adoptionSignals !== undefined) updateData.adoption_signals = updates.adoptionSignals as unknown as Record<string, unknown>
   if (updates.proactiveCheckInsEnabled !== undefined) updateData.proactive_check_ins_enabled = updates.proactiveCheckInsEnabled
   if (updates.selectedSequenceIds !== undefined) updateData.selected_sequence_ids = updates.selectedSequenceIds || null
   if (updates.deviceBrand !== undefined) updateData.device_brand = updates.deviceBrand || null

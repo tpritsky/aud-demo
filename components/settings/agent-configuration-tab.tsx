@@ -18,7 +18,7 @@ import { useAppStore } from '@/lib/store'
 import { toast } from 'sonner'
 import { VoiceStyle } from '@/lib/types'
 import { Save, Building2, Phone, Clock, Mic, Gauge, Settings2, AlertTriangle, PhoneCall, RotateCcw } from 'lucide-react'
-import { useToast } from 'sonner' // Import useToast from sonner
+// useToast not needed - using toast directly from sonner
 
 export function AgentConfigurationTab() {
   const { agentConfig, setAgentConfig } = useAppStore()

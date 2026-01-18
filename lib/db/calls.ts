@@ -1,9 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { Call } from '@/lib/types'
-import { Database, CallRow, CallInsert, CallUpdate } from './types'
+import { CallRow, CallInsert, CallUpdate } from './types'
 import { dbCallToApp, appCallToDb } from './utils'
 
-type Supabase = SupabaseClient<Database>
+type Supabase = SupabaseClient<any>
 
 export async function getCalls(supabase: Supabase, userId: string, limit?: number): Promise<Call[]> {
   let query = supabase
@@ -80,9 +80,9 @@ export async function updateCall(
   if (updates.durationSec !== undefined) updateData.duration_sec = updates.durationSec
   if (updates.sentiment !== undefined) updateData.sentiment = updates.sentiment
   if (updates.escalated !== undefined) updateData.escalated = updates.escalated
-  if (updates.summary !== undefined) updateData.summary = updates.summary as Record<string, unknown>
+  if (updates.summary !== undefined) updateData.summary = updates.summary as unknown as Record<string, unknown>
   if (updates.transcript !== undefined) updateData.transcript = updates.transcript
-  if (updates.entities !== undefined) updateData.entities = updates.entities as Record<string, unknown>
+  if (updates.entities !== undefined) updateData.entities = updates.entities as unknown as Record<string, unknown>
 
   const { data, error } = await supabase
     .from('calls')

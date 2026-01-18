@@ -543,6 +543,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearFutureCheckIns: () => {
         setScheduledCheckIns((prev) => clearFutureCheckIns(prev))
       },
+      checkAndProcessDueItems: () => {
+        // This is handled automatically by the useEffect polling
+        // Left as no-op for API compatibility
+      },
       addActivityEvent: async (event: ActivityEvent) => {
         if (!userIdRef.current) return
         

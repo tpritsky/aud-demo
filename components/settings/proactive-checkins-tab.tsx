@@ -43,7 +43,7 @@ import {
   Trash2,
   Calendar,
 } from 'lucide-react'
-import { useToast } from 'sonner'
+// useToast not needed - using toast directly from sonner
 
 const questionOptions = [
   'Wore today?',

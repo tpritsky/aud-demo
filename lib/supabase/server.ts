@@ -14,8 +14,8 @@ if (!supabaseUrl) {
  * Use this for API routes that need full access
  */
 export function createServerClient() {
-  if (!supabaseServiceRoleKey) {
-    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable')
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error('Missing Supabase environment variables')
   }
   
   return createClient(supabaseUrl, supabaseServiceRoleKey, {
@@ -33,8 +33,8 @@ export function createServerClient() {
  */
 export async function createServerClientWithUser() {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!supabaseAnonKey) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable')
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase environment variables')
   }
 
   const cookieStore = await cookies()

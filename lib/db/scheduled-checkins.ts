@@ -1,9 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { ScheduledCheckIn } from '@/lib/types'
-import { Database, ScheduledCheckInRow, ScheduledCheckInInsert, ScheduledCheckInUpdate } from './types'
+import { ScheduledCheckInRow, ScheduledCheckInInsert, ScheduledCheckInUpdate } from './types'
 import { dbScheduledCheckInToApp, appScheduledCheckInToDb } from './utils'
 
-type Supabase = SupabaseClient<Database>
+type Supabase = SupabaseClient<any>
 
 export async function getScheduledCheckIns(supabase: Supabase, userId: string): Promise<ScheduledCheckIn[]> {
   const { data, error } = await supabase

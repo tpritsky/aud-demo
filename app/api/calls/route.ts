@@ -418,15 +418,16 @@ export async function POST(request: NextRequest) {
       // Check scheduled check-ins
       const { data: checkIns } = await supabase
         .from('scheduled_check_ins')
-        .select('user_id')
+        .select('user_id, patient_id')
         .eq('conversation_id', call.id)
         .limit(1)
       
       if (checkIns && checkIns.length > 0) {
-        userId = checkIns[0].user_id
+        const checkIn = checkIns[0] as { user_id: string; patient_id: string | null }
+        userId = checkIn.user_id
         // Also try to find patient from the check-in
-        if (!call.patientId && checkIns[0].patient_id) {
-          call.patientId = checkIns[0].patient_id
+        if (!call.patientId && checkIn.patient_id) {
+          call.patientId = checkIn.patient_id
         }
       }
       
@@ -439,9 +440,10 @@ export async function POST(request: NextRequest) {
           .limit(1)
         
         if (tasks && tasks.length > 0) {
-          userId = tasks[0].user_id
-          if (!call.patientId && tasks[0].patient_id) {
-            call.patientId = tasks[0].patient_id
+          const task = tasks[0] as { user_id: string; patient_id: string | null }
+          userId = task.user_id
+          if (!call.patientId && task.patient_id) {
+            call.patientId = task.patient_id
           }
         }
       }

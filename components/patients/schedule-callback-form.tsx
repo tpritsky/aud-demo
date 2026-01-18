@@ -18,7 +18,7 @@ import { useAppStore } from '@/lib/store'
 import { toast } from 'sonner'
 import { CallbackTask, Patient } from '@/lib/types'
 import { PhoneCall } from 'lucide-react'
-import { useToast } from 'sonner' // Import useToast from sonner
+// useToast not needed - using toast directly from sonner
 
 interface ScheduleCallbackFormProps {
   patient: Patient
