@@ -330,13 +330,19 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('=== Webhook received ===')
+  console.log('Headers:', Object.fromEntries(request.headers.entries()))
+  
   try {
     // Get the signature header
     const signatureHeader = request.headers.get('elevenlabs-signature') || 
                            request.headers.get('ElevenLabs-Signature')
     
+    console.log('Signature header present:', !!signatureHeader)
+    
     if (!signatureHeader) {
       console.error('Missing ElevenLabs-Signature header')
+      console.log('Available headers:', Array.from(request.headers.keys()))
       return NextResponse.json(
         { error: 'Missing signature header' },
         { status: 401 }
@@ -366,8 +372,15 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.text()
     
     // Verify HMAC signature
-    if (!verifyWebhookSignature(parsed.signature, parsed.timestamp, rawBody)) {
+    const signatureValid = verifyWebhookSignature(parsed.signature, parsed.timestamp, rawBody)
+    console.log('Signature valid:', signatureValid)
+    console.log('Webhook secret configured:', !!WEBHOOK_SECRET)
+    
+    if (!signatureValid) {
       console.error('Invalid webhook signature')
+      console.error('Expected secret:', WEBHOOK_SECRET ? 'SET' : 'NOT SET')
+      console.error('Signature:', parsed.signature)
+      console.error('Timestamp:', parsed.timestamp)
       return NextResponse.json(
         { error: 'Invalid signature' },
         { status: 401 }
@@ -388,12 +401,16 @@ export async function POST(request: NextRequest) {
     
     // Log received webhook for debugging
     console.log('Received webhook:', JSON.stringify(body, null, 2))
+    console.log('Webhook type:', body.type)
+    console.log('Conversation ID:', body.data?.conversation_id)
     
     // Transform the webhook data to our Call type (handles missing fields)
     const call = transformElevenLabsCall(body)
+    console.log('Transformed call:', { id: call.id, phone: call.phone, patientId: call.patientId })
     
     // Try to match call to patient by phone number and find user_id
     const supabase = createServerClient()
+    console.log('Supabase client created')
     
     // Normalize phone number for matching
     const normalizedPhone = normalizePhoneNumber(call.phone)
@@ -488,7 +505,18 @@ export async function POST(request: NextRequest) {
     }
     
     // Check if call already exists
+    console.log('User ID determined:', userId)
+    
+    if (!userId) {
+      console.error('No user_id found - call cannot be stored')
+      return NextResponse.json(
+        { error: 'No user_id found for call', call },
+        { status: 500 }
+      )
+    }
+    
     const existingCall = await dbCalls.getCall(supabase, call.id, userId)
+    console.log('Existing call found:', !!existingCall)
     
     if (existingCall) {
       // Update existing call with all fields
@@ -511,6 +539,7 @@ export async function POST(request: NextRequest) {
       console.log('Call updated successfully:', call.id)
     } else {
       // Create new call
+      console.log('Creating new call in database...')
       await dbCalls.createCall(supabase, call, userId)
       console.log('Call stored successfully:', call.id)
       
@@ -527,7 +556,13 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     )
   } catch (error) {
-    console.error('Error processing Eleven Labs webhook:', error)
+    console.error('=== Error processing Eleven Labs webhook ===')
+    console.error('Error:', error)
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      name: error instanceof Error ? error.name : 'Unknown',
+    })
     return NextResponse.json(
       { error: 'Failed to process webhook', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
