@@ -1,0 +1,136 @@
+# Supabase Integration Setup Guide
+
+This guide will help you set up Supabase for the Audiology Voice Agent application.
+
+## Prerequisites
+
+1. A Supabase account (sign up at https://supabase.com)
+2. Node.js and npm installed
+3. Your Supabase project created
+
+## Step 1: Install Dependencies
+
+Run the following command to install the Supabase client:
+
+```bash
+npm install @supabase/supabase-js
+```
+
+## Step 2: Set Up Supabase Project
+
+1. Go to your Supabase project dashboard
+2. Navigate to **Settings** → **API**
+3. Copy the following values:
+   - **Project URL** (NEXT_PUBLIC_SUPABASE_URL)
+   - **anon/public key** (NEXT_PUBLIC_SUPABASE_ANON_KEY)
+   - **service_role key** (SUPABASE_SERVICE_ROLE_KEY) - Keep this secret!
+
+## Step 3: Configure Environment Variables
+
+Create a `.env.local` file in the project root (if it doesn't exist) and add:
+
+```env
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# Eleven Labs Configuration (existing)
+ELEVENLABS_WEBHOOK_SECRET=your_webhook_secret
+ELEVENLABS_API_KEY=your_api_key
+```
+
+## Step 4: Run Database Migration
+
+1. In your Supabase dashboard, go to **SQL Editor**
+2. Open the file `supabase/migrations/001_initial_schema.sql`
+3. Copy the entire SQL content
+4. Paste it into the SQL Editor in Supabase
+5. Click **Run** to execute the migration
+
+This will create:
+- All necessary tables (patients, calls, sequences, callback_tasks, etc.)
+- Indexes for performance
+- Row Level Security (RLS) policies
+- Triggers for updated_at timestamps
+
+## Step 5: Enable Real-time (Optional but Recommended)
+
+1. In Supabase dashboard, go to **Database** → **Replication**
+2. Enable replication for the following tables:
+   - `calls`
+   - `patients`
+   - `proactive_sequences`
+   - `callback_tasks`
+   - `scheduled_check_ins`
+   - `activity_events`
+
+## Step 6: Create Your First User
+
+1. In Supabase dashboard, go to **Authentication** → **Users**
+2. Click **Add User** → **Create new user**
+3. Enter an email and password
+4. Copy the user ID (you'll need this for initial data setup if needed)
+
+## Step 7: Test the Integration
+
+1. Start your development server:
+   ```bash
+   npm run dev
+   ```
+
+2. Navigate to the login page
+3. Sign in with the user you created
+4. The app should now load data from Supabase
+
+## Troubleshooting
+
+### "Missing Supabase environment variables" error
+- Make sure `.env.local` exists and contains all required variables
+- Restart your development server after adding environment variables
+
+### "Row Level Security policy violation" error
+- Make sure you're signed in with a valid user
+- Check that RLS policies are correctly set up in the migration
+
+### Real-time subscriptions not working
+- Verify that replication is enabled for the tables
+- Check browser console for subscription errors
+- Make sure you're using the anon key (not service role key) in the client
+
+### Webhook not saving calls
+- Verify that the webhook can find a patient by phone number
+- Check that the patient's `user_id` matches an existing user
+- Review the API route logs for errors
+
+## Database Schema Overview
+
+The migration creates the following tables:
+
+- **patients** - Patient information
+- **calls** - Call records from Eleven Labs
+- **proactive_sequences** - Check-in sequence templates
+- **callback_tasks** - Callback task management
+- **callback_attempts** - Individual call attempts (normalized)
+- **scheduled_check_ins** - Proactive check-in scheduling
+- **activity_events** - Activity feed
+- **agent_config** - Agent configuration (one per user)
+
+All tables include:
+- `user_id` foreign key to `auth.users` for multi-user support
+- Row Level Security (RLS) policies to ensure data isolation
+- Appropriate indexes for query performance
+
+## Next Steps
+
+1. **Seed initial data** (optional): You can create a script to import existing mock data
+2. **Configure agent settings**: Set up your Eleven Labs agent IDs in Settings
+3. **Test webhook**: Verify that incoming calls from Eleven Labs are saved correctly
+4. **Monitor performance**: Check Supabase dashboard for query performance and usage
+
+## Security Notes
+
+- Never commit `.env.local` to version control
+- The service role key bypasses RLS - only use it in server-side API routes
+- The anon key is safe to use in client-side code (protected by RLS)
+- All user data is automatically isolated by RLS policies
