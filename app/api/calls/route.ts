@@ -469,25 +469,74 @@ export async function POST(request: NextRequest) {
     // Strategy 3: If still no user_id, get the first user from agent_config or patients table
     // This is a fallback for single-user scenarios or when calls come in before patients are created
     if (!userId) {
+      console.log('Strategy 3: Trying fallback methods to find user_id...')
+      
       // Try to get a user_id from agent_config (one per user)
-      const { data: agentConfigs } = await supabase
+      const { data: agentConfigs, error: agentError } = await supabase
         .from('agent_config')
         .select('user_id')
         .limit(1)
+      
+      console.log('Agent config query result:', { data: agentConfigs, error: agentError })
       
       if (agentConfigs && agentConfigs.length > 0) {
         userId = agentConfigs[0].user_id
         console.log(`No patient/task match found, using user from agent_config: ${userId}`)
       } else {
-        // Last resort: get any user_id from patients table
-        const { data: anyPatients } = await supabase
+        // Try to get any user_id from patients table
+        const { data: anyPatients, error: patientError } = await supabase
           .from('patients')
           .select('user_id')
           .limit(1)
         
+        console.log('Patients query result:', { data: anyPatients, error: patientError })
+        
         if (anyPatients && anyPatients.length > 0) {
           userId = anyPatients[0].user_id
           console.log(`No patient/task match found, using user from patients table: ${userId}`)
+        } else {
+          // Last resort: Query profiles table (easier than auth.users admin API)
+          console.log('Attempting to query profiles table...')
+          const { data: profiles, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id')
+            .limit(1)
+          
+          console.log('Profiles query result:', { 
+            profilesCount: profiles?.length || 0, 
+            error: profilesError,
+            firstUserId: profiles?.[0]?.id 
+          })
+          
+          if (profilesError) {
+            console.error('Profiles query error:', profilesError.message, profilesError.code)
+          }
+          
+          if (profiles && profiles.length > 0) {
+            userId = profiles[0].id
+            console.log(`✅ Found user from profiles table: ${userId}`)
+          } else {
+            console.error('❌ No users found in profiles table')
+            console.error('This is unexpected if you can log in. The profile should be created automatically on signup.')
+            console.error('You may need to run the migration to backfill existing users.')
+            
+            // Fallback: Try admin API as absolute last resort
+            try {
+              console.log('Attempting admin API as final fallback...')
+              const { data: { users }, error: authError } = await supabase.auth.admin.listUsers()
+              
+              if (authError) {
+                console.error('Admin API error:', authError.message, authError.status)
+              }
+              
+              if (users && users.length > 0) {
+                userId = users[0].id
+                console.log(`✅ Found user from auth.users admin API: ${userId}`)
+              }
+            } catch (authErr) {
+              console.error('❌ Admin API also failed:', authErr)
+            }
+          }
         }
       }
     }

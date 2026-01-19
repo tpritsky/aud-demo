@@ -40,19 +40,29 @@ ELEVENLABS_WEBHOOK_SECRET=your_webhook_secret
 ELEVENLABS_API_KEY=your_api_key
 ```
 
-## Step 4: Run Database Migration
+## Step 4: Run Database Migrations
 
+You need to run two migrations in order:
+
+### Migration 1: Initial Schema
 1. In your Supabase dashboard, go to **SQL Editor**
 2. Open the file `supabase/migrations/001_initial_schema.sql`
 3. Copy the entire SQL content
 4. Paste it into the SQL Editor in Supabase
 5. Click **Run** to execute the migration
 
-This will create:
-- All necessary tables (patients, calls, sequences, callback_tasks, etc.)
+### Migration 2: Profiles Table
+1. In the same SQL Editor, open the file `supabase/migrations/002_add_profiles_table.sql`
+2. Copy the entire SQL content
+3. Paste it into the SQL Editor in Supabase
+4. Click **Run** to execute the migration
+
+These migrations will create:
+- All necessary tables (patients, calls, sequences, callback_tasks, profiles, etc.)
 - Indexes for performance
 - Row Level Security (RLS) policies
 - Triggers for updated_at timestamps
+- Automatic profile creation on user signup
 
 ## Step 5: Enable Real-time (Optional but Recommended)
 
@@ -67,10 +77,20 @@ This will create:
 
 ## Step 6: Create Your First User
 
+You have two options:
+
+### Option A: Sign Up Through the App (Recommended)
+1. Start your development server: `npm run dev`
+2. Navigate to the login page
+3. Click "Sign Up" and create an account
+4. A profile will be automatically created in the `profiles` table
+
+### Option B: Create User Manually in Supabase
 1. In Supabase dashboard, go to **Authentication** → **Users**
 2. Click **Add User** → **Create new user**
 3. Enter an email and password
-4. Copy the user ID (you'll need this for initial data setup if needed)
+4. A profile will be automatically created via the trigger
+5. You can update the profile later to add full_name, role, etc.
 
 ## Step 7: Test the Integration
 
@@ -105,8 +125,9 @@ This will create:
 
 ## Database Schema Overview
 
-The migration creates the following tables:
+The migrations create the following tables:
 
+- **profiles** - User profiles with additional information (name, role, clinic, etc.)
 - **patients** - Patient information
 - **calls** - Call records from Eleven Labs
 - **proactive_sequences** - Check-in sequence templates
@@ -115,6 +136,12 @@ The migration creates the following tables:
 - **scheduled_check_ins** - Proactive check-in scheduling
 - **activity_events** - Activity feed
 - **agent_config** - Agent configuration (one per user)
+
+The `profiles` table:
+- Automatically created when a user signs up (via trigger)
+- Stores additional user information beyond what's in `auth.users`
+- Can be easily queried by webhooks and API routes
+- Supports roles: 'audiologist', 'admin', 'staff'
 
 All tables include:
 - `user_id` foreign key to `auth.users` for multi-user support
