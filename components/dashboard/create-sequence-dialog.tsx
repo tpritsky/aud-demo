@@ -32,7 +32,7 @@ export function CreateSequenceDialog() {
   const [name, setName] = useState('')
   const [audienceTag, setAudienceTag] = useState<PatientTag>('New Fit')
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const newSequence: ProactiveSequence = {
       id: `seq-${Date.now()}`,
       name,
@@ -50,13 +50,17 @@ export function CreateSequenceDialog() {
       ],
     }
 
-    addSequence(newSequence)
-    toast.success('Sequence Created', {
-      description: `"${name}" has been created. Configure steps in Settings.`,
-    })
-    setOpen(false)
-    setName('')
-    setAudienceTag('New Fit')
+    try {
+      await addSequence(newSequence)
+      setOpen(false)
+      setName('')
+      setAudienceTag('New Fit')
+    } catch (error) {
+      console.error('Error creating sequence:', error)
+      toast.error('Failed to create sequence', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+      })
+    }
   }
 
   return (

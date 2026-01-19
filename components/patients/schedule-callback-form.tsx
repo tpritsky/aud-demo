@@ -42,44 +42,38 @@ export function ScheduleCallbackForm({ patient }: ScheduleCallbackFormProps) {
 
     setIsSubmitting(true)
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    try {
+      const dueTime = priority === 'high' ? 60 * 60 * 1000 : priority === 'medium' ? 24 * 60 * 60 * 1000 : 48 * 60 * 60 * 1000
 
-    const dueTime = priority === 'high' ? 60 * 60 * 1000 : priority === 'medium' ? 24 * 60 * 60 * 1000 : 48 * 60 * 60 * 1000
+      const newTask: CallbackTask = {
+        id: `task-${Date.now()}`,
+        patientId: patient.id,
+        patientName: patient.name,
+        phone: patient.phone,
+        callReason: callReason.trim(),
+        callGoal: callGoal.trim(),
+        priority,
+        status: 'pending',
+        createdAt: new Date(),
+        dueAt: new Date(Date.now() + dueTime),
+        attempts: [],
+        maxAttempts: agentConfig.callbackSettings.maxAttempts,
+      }
 
-    const newTask: CallbackTask = {
-      id: `task-${Date.now()}`,
-      patientId: patient.id,
-      patientName: patient.name,
-      phone: patient.phone,
-      callReason: callReason.trim(),
-      callGoal: callGoal.trim(),
-      priority,
-      status: 'pending',
-      createdAt: new Date(),
-      dueAt: new Date(Date.now() + dueTime),
-      attempts: [],
-      maxAttempts: agentConfig.callbackSettings.maxAttempts,
+      await addCallbackTask(newTask)
+      // Activity event is created by the store function
+
+      setCallReason('')
+      setCallGoal('')
+      setPriority('medium')
+    } catch (error) {
+      console.error('Error creating callback task:', error)
+      toast.error('Failed to create callback task', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+      })
+    } finally {
+      setIsSubmitting(false)
     }
-
-    addCallbackTask(newTask)
-    addActivityEvent({
-      id: `event-${Date.now()}`,
-      type: 'callback',
-      description: `Callback scheduled: ${callReason.trim()}`,
-      timestamp: new Date(),
-      patientName: patient.name,
-      patientId: patient.id,
-    })
-
-    toast.success('Callback Scheduled', {
-      description: `A ${priority} priority callback has been scheduled for ${patient.name}.`,
-    })
-
-    setCallReason('')
-    setCallGoal('')
-    setPriority('medium')
-    setIsSubmitting(false)
   }
 
   return (

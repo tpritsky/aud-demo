@@ -219,7 +219,7 @@ export function TasksTable() {
     setRedialDuration('')
   }
 
-  const handleCreateTask = () => {
+  const handleCreateTask = async () => {
     if (!newTaskPatientId || !newTaskCallReason.trim() || !newTaskCallGoal.trim()) {
       toast.error('Validation Error', {
         description: 'Please fill in all required fields: Patient, Call Reason, and Call Goal.',
@@ -230,41 +230,37 @@ export function TasksTable() {
     const patient = patients.find((p) => p.id === newTaskPatientId)
     if (!patient) return
 
-    const newTask: CallbackTask = {
-      id: `task-${Date.now()}`,
-      patientId: newTaskPatientId,
-      patientName: patient.name,
-      phone: patient.phone,
-      callReason: newTaskCallReason.trim(),
-      callGoal: newTaskCallGoal.trim(),
-      priority: newTaskPriority,
-      status: 'pending',
-      createdAt: new Date(),
-      dueAt: new Date(Date.now() + (newTaskPriority === 'high' ? 60 * 60 * 1000 : newTaskPriority === 'medium' ? 24 * 60 * 60 * 1000 : 48 * 60 * 60 * 1000)),
-      attempts: [],
-      maxAttempts: newTaskMaxAttempts,
+    try {
+      const newTask: CallbackTask = {
+        id: `task-${Date.now()}`,
+        patientId: newTaskPatientId,
+        patientName: patient.name,
+        phone: patient.phone,
+        callReason: newTaskCallReason.trim(),
+        callGoal: newTaskCallGoal.trim(),
+        priority: newTaskPriority,
+        status: 'pending',
+        createdAt: new Date(),
+        dueAt: new Date(Date.now() + (newTaskPriority === 'high' ? 60 * 60 * 1000 : newTaskPriority === 'medium' ? 24 * 60 * 60 * 1000 : 48 * 60 * 60 * 1000)),
+        attempts: [],
+        maxAttempts: newTaskMaxAttempts,
+      }
+
+      await addCallbackTask(newTask)
+      // Activity event is created by the store function
+
+      setIsCreateDialogOpen(false)
+      setNewTaskPatientId('')
+      setNewTaskCallReason('')
+      setNewTaskCallGoal('')
+      setNewTaskPriority('medium')
+      setNewTaskMaxAttempts(agentConfig.callbackSettings.maxAttempts)
+    } catch (error) {
+      console.error('Error creating task:', error)
+      toast.error('Failed to create task', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+      })
     }
-
-    addCallbackTask(newTask)
-    addActivityEvent({
-      id: `event-${Date.now()}`,
-      type: 'callback',
-      description: `Callback task created: ${newTaskCallReason.trim()}`,
-      timestamp: new Date(),
-      patientName: patient.name,
-      patientId: patient.id,
-    })
-
-    toast.success('Task Created', {
-      description: `Callback task created for ${patient.name}.`,
-    })
-
-    setIsCreateDialogOpen(false)
-    setNewTaskPatientId('')
-    setNewTaskCallReason('')
-    setNewTaskCallGoal('')
-    setNewTaskPriority('medium')
-    setNewTaskMaxAttempts(agentConfig.callbackSettings.maxAttempts)
   }
   
   const handleDeleteTask = (task: CallbackTask) => {

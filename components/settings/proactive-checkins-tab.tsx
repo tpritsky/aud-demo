@@ -96,23 +96,27 @@ export function ProactiveCheckInsTab() {
     })
   }
 
-  const handleCreateSequence = () => {
+  const handleCreateSequence = async () => {
     if (!newSequence.name) return
 
-    const sequence: ProactiveSequence = {
-      id: `seq-${Date.now()}`,
-      name: newSequence.name,
-      audienceTag: newSequence.audienceTag || 'New Fit',
-      active: false,
-      steps: newSequence.steps || [],
-    }
+    try {
+      const sequence: ProactiveSequence = {
+        id: `seq-${Date.now()}`,
+        name: newSequence.name,
+        audienceTag: newSequence.audienceTag || 'New Fit',
+        active: false,
+        steps: newSequence.steps || [],
+      }
 
-    addSequence(sequence)
-    toast.success('Sequence Created', {
-      description: `"${sequence.name}" has been created.`,
-    })
-    setIsCreating(false)
-    setNewSequence({ name: '', audienceTag: 'New Fit', steps: [] })
+      await addSequence(sequence)
+      setIsCreating(false)
+      setNewSequence({ name: '', audienceTag: 'New Fit', steps: [] })
+    } catch (error) {
+      console.error('Error creating sequence:', error)
+      toast.error('Failed to create sequence', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+      })
+    }
   }
 
   const handleAddStep = (sequenceId: string) => {

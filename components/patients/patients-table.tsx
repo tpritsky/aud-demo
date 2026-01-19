@@ -52,6 +52,7 @@ export function PatientsTable() {
   const [newPatientDeviceModel, setNewPatientDeviceModel] = useState('')
   const [newPatientFittingDate, setNewPatientFittingDate] = useState('')
   const [newPatientProactiveCheckIns, setNewPatientProactiveCheckIns] = useState(false)
+  const [isCreatingPatient, setIsCreatingPatient] = useState(false)
 
   const filteredPatients = useMemo(() => {
     return patients
@@ -350,7 +351,9 @@ export function PatientsTable() {
               <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreatePatient}>Create Patient</Button>
+              <Button onClick={handleCreatePatient} disabled={isCreatingPatient}>
+                {isCreatingPatient ? 'Creating...' : 'Create Patient'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

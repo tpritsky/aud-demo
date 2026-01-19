@@ -46,7 +46,7 @@ export function HighRiskPatients() {
     setIsDialogOpen(true)
   }
 
-  const handleConfirmCallback = () => {
+  const handleConfirmCallback = async () => {
     if (!selectedPatient || !callReason.trim() || !callGoal.trim()) {
       toast.error('Validation Error', {
         description: 'Please fill in Call Reason and Call Goal fields.',
@@ -54,42 +54,38 @@ export function HighRiskPatients() {
       return
     }
 
-    const priority = selectedPatient.riskScore >= 70 ? 'high' : 'medium'
-    const dueTime = priority === 'high' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+    try {
+      const priority = selectedPatient.riskScore >= 70 ? 'high' : 'medium'
+      const dueTime = priority === 'high' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000
 
-    const newTask: CallbackTask = {
-      id: `task-${Date.now()}`,
-      patientId: selectedPatient.id,
-      patientName: selectedPatient.name,
-      phone: selectedPatient.phone,
-      callReason: callReason.trim(),
-      callGoal: callGoal.trim(),
-      priority,
-      status: 'pending',
-      createdAt: new Date(),
-      dueAt: new Date(Date.now() + dueTime),
-      attempts: [],
-      maxAttempts: agentConfig.callbackSettings.maxAttempts,
+      const newTask: CallbackTask = {
+        id: `task-${Date.now()}`,
+        patientId: selectedPatient.id,
+        patientName: selectedPatient.name,
+        phone: selectedPatient.phone,
+        callReason: callReason.trim(),
+        callGoal: callGoal.trim(),
+        priority,
+        status: 'pending',
+        createdAt: new Date(),
+        dueAt: new Date(Date.now() + dueTime),
+        attempts: [],
+        maxAttempts: agentConfig.callbackSettings.maxAttempts,
+      }
+
+      await addCallbackTask(newTask)
+      // Activity event is created by the store function
+
+      setIsDialogOpen(false)
+      setSelectedPatient(null)
+      setCallReason('')
+      setCallGoal('')
+    } catch (error) {
+      console.error('Error creating callback task:', error)
+      toast.error('Failed to create callback task', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+      })
     }
-
-    addCallbackTask(newTask)
-    addActivityEvent({
-      id: `event-${Date.now()}`,
-      type: 'callback',
-      description: `Callback scheduled: ${callReason.trim()}`,
-      timestamp: new Date(),
-      patientName: selectedPatient.name,
-      patientId: selectedPatient.id,
-    })
-
-    toast.success('Callback Scheduled', {
-      description: `Callback task created for ${selectedPatient.name}`,
-    })
-
-    setIsDialogOpen(false)
-    setSelectedPatient(null)
-    setCallReason('')
-    setCallGoal('')
   }
 
   const getRiskBadgeVariant = (score: number) => {

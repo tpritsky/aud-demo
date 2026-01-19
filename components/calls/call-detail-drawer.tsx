@@ -107,22 +107,22 @@ export function CallDetailDrawer({ call, open, onOpenChange }: CallDetailDrawerP
       .join(' ')
   }
 
-  const handleStatusChange = (newStatus: CallStatus) => {
-    updateCall(currentCall.id, { status: newStatus })
-    addActivityEvent({
-      id: `event-${Date.now()}`,
-      type: 'call',
-      description: `Call status changed to ${newStatus.replace('_', ' ')}`,
-      timestamp: new Date(),
-      patientName: currentCall.callerName,
-      patientId: currentCall.patientId,
-    })
-    toast.success('Status Updated', {
-      description: `Call status has been changed to ${newStatus.replace('_', ' ')}.`,
-    })
+  const handleStatusChange = async (newStatus: CallStatus) => {
+    try {
+      await updateCall(currentCall.id, { status: newStatus })
+      // Activity event is created by the store function
+      toast.success('Status Updated', {
+        description: `Call status has been changed to ${newStatus.replace('_', ' ')}.`,
+      })
+    } catch (error) {
+      console.error('Error updating call status:', error)
+      toast.error('Failed to update status', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+      })
+    }
   }
 
-  const handleCreateCallback = () => {
+  const handleCreateCallback = async () => {
     const { callbackSettings } = agentConfig
     const priority = currentCall.escalated ? 'high' : callbackSettings.priorityByDefault
     const dueTime = priority === 'high' ? 60 * 60 * 1000 : priority === 'medium' ? 24 * 60 * 60 * 1000 : 48 * 60 * 60 * 1000
@@ -134,43 +134,38 @@ export function CallDetailDrawer({ call, open, onOpenChange }: CallDetailDrawerP
       return
     }
 
-    const newTask: CallbackTask = {
-      id: `task-${Date.now()}`,
-      patientId: currentCall.patientId || '',
-      patientName: currentCall.callerName,
-      phone: currentCall.phone,
-      callReason: callbackCallReason.trim(),
-      callGoal: callbackCallGoal.trim(),
-      priority,
-      status: 'pending',
-      createdAt: new Date(),
-      dueAt: new Date(Date.now() + dueTime),
-      callId: currentCall.id,
-      attempts: [],
-      maxAttempts: callbackSettings.maxAttempts,
+    try {
+      const newTask: CallbackTask = {
+        id: `task-${Date.now()}`,
+        patientId: currentCall.patientId || '',
+        patientName: currentCall.callerName,
+        phone: currentCall.phone,
+        callReason: callbackCallReason.trim(),
+        callGoal: callbackCallGoal.trim(),
+        priority,
+        status: 'pending',
+        createdAt: new Date(),
+        dueAt: new Date(Date.now() + dueTime),
+        callId: currentCall.id,
+        attempts: [],
+        maxAttempts: callbackSettings.maxAttempts,
+      }
+
+      await addCallbackTask(newTask)
+
+      // Update call status to pending_callback
+      await updateCall(currentCall.id, { status: 'pending_callback' })
+      // Activity event is created by the store function
+
+      setIsCallbackDialogOpen(false)
+      setCallbackCallReason('')
+      setCallbackCallGoal('')
+    } catch (error) {
+      console.error('Error creating callback task:', error)
+      toast.error('Failed to create callback task', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+      })
     }
-
-    addCallbackTask(newTask)
-
-    // Update call status to pending_callback
-    updateCall(currentCall.id, { status: 'pending_callback' })
-
-    addActivityEvent({
-      id: `event-${Date.now()}`,
-      type: 'callback',
-      description: `Callback task created from call`,
-      timestamp: new Date(),
-      patientName: currentCall.callerName,
-      patientId: currentCall.patientId,
-    })
-
-    toast.success('Callback Task Created', {
-      description: `Task created for ${currentCall.callerName}`,
-    })
-
-    setIsCallbackDialogOpen(false)
-    setCallbackCallReason('')
-    setCallbackCallGoal('')
   }
 
   const handleExportSummary = () => {

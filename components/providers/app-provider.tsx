@@ -433,15 +433,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       setPatients,
       addPatient: async (patient: Patient) => {
-        if (!userIdRef.current) return
+        if (!userIdRef.current) {
+          throw new Error('User not authenticated')
+        }
         
         try {
           const created = await dbPatients.createPatient(supabase, patient, userIdRef.current)
           // Real-time subscription will update state
-          toast.success('Patient added')
+          toast.success('Patient added', {
+            description: `${patient.name} has been added to the directory.`,
+          })
+          
+          // Also add activity event
+          await dbActivityEvents.createActivityEvent(supabase, {
+            id: `event-${Date.now()}`,
+            type: 'new_patient',
+            description: `New patient added: ${patient.name}`,
+            timestamp: new Date(),
+            patientName: patient.name,
+            patientId: created.id,
+          }, userIdRef.current)
         } catch (error) {
           console.error('Error adding patient:', error)
-          toast.error('Failed to add patient')
+          const errorMessage = error instanceof Error ? error.message : 'Failed to add patient'
+          toast.error('Failed to add patient', {
+            description: errorMessage,
+          })
+          throw error // Re-throw so the UI can handle it
         }
       },
       updatePatient: async (id: string, updates: Partial<Patient>) => {
@@ -457,15 +475,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       setSequences,
       addSequence: async (sequence: ProactiveSequence) => {
-        if (!userIdRef.current) return
+        if (!userIdRef.current) {
+          throw new Error('User not authenticated')
+        }
         
         try {
           const created = await dbSequences.createSequence(supabase, sequence, userIdRef.current)
           // Real-time subscription will update state
-          toast.success('Sequence added')
+          toast.success('Sequence added', {
+            description: `"${sequence.name}" has been created.`,
+          })
         } catch (error) {
           console.error('Error adding sequence:', error)
-          toast.error('Failed to add sequence')
+          const errorMessage = error instanceof Error ? error.message : 'Failed to add sequence'
+          toast.error('Failed to add sequence', {
+            description: errorMessage,
+          })
+          throw error
         }
       },
       updateSequence: async (id: string, updates: Partial<ProactiveSequence>) => {
@@ -481,15 +507,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       setCallbackTasks,
       addCallbackTask: async (task: CallbackTask) => {
-        if (!userIdRef.current) return
+        if (!userIdRef.current) {
+          throw new Error('User not authenticated')
+        }
         
         try {
           const created = await dbCallbackTasks.createCallbackTask(supabase, task, userIdRef.current)
           // Real-time subscription will update state
           toast.success('Callback task created')
+          
+          // Also add activity event
+          await dbActivityEvents.createActivityEvent(supabase, {
+            id: `event-${Date.now()}`,
+            type: 'callback',
+            description: `Callback task created: ${task.callReason}`,
+            timestamp: new Date(),
+            patientName: task.patientName,
+            patientId: task.patientId,
+          }, userIdRef.current)
         } catch (error) {
           console.error('Error adding callback task:', error)
-          toast.error('Failed to create callback task')
+          const errorMessage = error instanceof Error ? error.message : 'Failed to create callback task'
+          toast.error('Failed to create callback task', {
+            description: errorMessage,
+          })
+          throw error
         }
       },
       updateCallbackTask: async (id: string, updates: Partial<CallbackTask>) => {
