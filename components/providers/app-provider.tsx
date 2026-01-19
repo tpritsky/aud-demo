@@ -31,6 +31,7 @@ import * as dbCallbackTasks from '@/lib/db/callback-tasks'
 import * as dbScheduledCheckIns from '@/lib/db/scheduled-checkins'
 import * as dbActivityEvents from '@/lib/db/activity-events'
 import * as dbAgentConfig from '@/lib/db/agent-config'
+import * as dbUtils from '@/lib/db/utils'
 import { toast } from 'sonner'
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -94,28 +95,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         userIdRef.current = session.user.id
         setIsLoggedIn(true)
         await loadInitialData(session.user.id)
-      } else if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
-        if (event === 'SIGNED_OUT') {
-          userIdRef.current = null
-          setIsLoggedIn(false)
-          // Clear all data
-          setCalls([])
-          setPatients([])
-          setSequences([])
-          setCallbackTasks([])
-          setScheduledCheckIns([])
-          setActivityEvents([])
-          setAgentConfig(initialState.agentConfig)
-        }
-      }
-    })
-
-    // Listen for auth errors (including refresh token errors)
-    supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' && !session) {
-        // Session expired or invalid
+      } else if (event === 'SIGNED_OUT') {
         userIdRef.current = null
         setIsLoggedIn(false)
+        // Clear all data
+        setCalls([])
+        setPatients([])
+        setSequences([])
+        setCallbackTasks([])
+        setScheduledCheckIns([])
+        setActivityEvents([])
+        setAgentConfig(initialState.agentConfig)
+      } else if (event === 'TOKEN_REFRESHED') {
+        // Token refreshed successfully, no action needed
+        // Don't reload data on token refresh to avoid unnecessary lag
       }
     })
 
@@ -129,10 +122,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true)
       
-      // Load all data in parallel
-      const [patientsData, callsData, sequencesData, tasksData, checkInsData, eventsData, configData] = await Promise.all([
+      // Load critical data first (calls, patients) to show UI quickly
+      // Then load less critical data in parallel
+      const [patientsData, callsData] = await Promise.all([
         dbPatients.getPatients(supabase, userId).catch(() => []),
         dbCalls.getCalls(supabase, userId, 100).catch(() => []),
+      ])
+
+      // Set critical data immediately so UI can render
+      setPatients(patientsData)
+      setCalls(callsData)
+      setIsLoading(false) // Allow UI to render while loading other data
+
+      // Load remaining data in background
+      const [sequencesData, tasksData, checkInsData, eventsData, configData] = await Promise.allSettled([
         dbSequences.getSequences(supabase, userId).catch(() => []),
         dbCallbackTasks.getCallbackTasks(supabase, userId).catch(() => []),
         dbScheduledCheckIns.getScheduledCheckIns(supabase, userId).catch(() => []),
@@ -140,21 +143,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         dbAgentConfig.getAgentConfig(supabase, userId).catch(() => null),
       ])
 
-      setPatients(patientsData)
-      setCalls(callsData)
-      setSequences(sequencesData)
-      setCallbackTasks(tasksData)
-      setScheduledCheckIns(checkInsData)
-      setActivityEvents(eventsData)
-      if (configData) {
-        setAgentConfig(configData)
+      // Update state with remaining data
+      if (sequencesData.status === 'fulfilled') setSequences(sequencesData.value)
+      if (tasksData.status === 'fulfilled') setCallbackTasks(tasksData.value)
+      if (checkInsData.status === 'fulfilled') setScheduledCheckIns(checkInsData.value)
+      if (eventsData.status === 'fulfilled') setActivityEvents(eventsData.value)
+      if (configData.status === 'fulfilled' && configData.value) {
+        setAgentConfig(configData.value)
       }
     } catch (error) {
       console.error('Error loading initial data:', error)
       toast.error('Failed to load data', {
         description: 'Please refresh the page',
       })
-    } finally {
       setIsLoading(false)
     }
   }
@@ -173,17 +174,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
         schema: 'public',
         table: 'calls',
         filter: `user_id=eq.${userId}`,
-      }, async (payload) => {
+      }, (payload) => {
+        // Use the payload data directly instead of fetching from database to avoid lag
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          const call = await dbCalls.getCall(supabase, payload.new.id as string, userId)
-          if (call) {
-            setCalls((prev) => {
-              const existing = prev.find(c => c.id === call.id)
-              if (existing) {
-                return prev.map(c => c.id === call.id ? call : c)
-              }
-              return [call, ...prev].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-            })
+          try {
+            // Convert the database row directly to avoid an extra database query
+            // The payload.new already contains all the call data from the database
+            const callRow = payload.new as any
+            const call = dbUtils.dbCallToApp(callRow)
+            
+            if (call) {
+              setCalls((prev) => {
+                const existing = prev.find(c => c.id === call.id)
+                if (existing) {
+                  // Only update if there are actual changes to avoid unnecessary re-renders
+                  // Compare key fields instead of full object to avoid false positives
+                  const hasChanges = 
+                    existing.timestamp.getTime() !== call.timestamp.getTime() ||
+                    existing.status !== call.status ||
+                    existing.outcome !== call.outcome ||
+                    existing.transcript !== call.transcript ||
+                    JSON.stringify(existing.summary) !== JSON.stringify(call.summary)
+                  
+                  if (hasChanges) {
+                    return prev.map(c => c.id === call.id ? call : c)
+                  }
+                  return prev
+                }
+                return [call, ...prev].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+              })
+            }
+          } catch (error) {
+            console.error('Error processing call update from real-time:', error)
+            // Silently fail - the call will be synced on next page load
           }
         } else if (payload.eventType === 'DELETE') {
           setCalls((prev) => prev.filter(c => c.id !== payload.old.id))
@@ -199,17 +222,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
         schema: 'public',
         table: 'patients',
         filter: `user_id=eq.${userId}`,
-      }, async (payload) => {
+      }, (payload) => {
+        // Use payload data directly to avoid database query lag
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          const patient = await dbPatients.getPatient(supabase, payload.new.id as string, userId)
-          if (patient) {
-            setPatients((prev) => {
-              const existing = prev.find(p => p.id === patient.id)
-              if (existing) {
-                return prev.map(p => p.id === patient.id ? patient : p)
-              }
-              return [patient, ...prev]
-            })
+          try {
+            const patientRow = payload.new as any
+            const patient = dbUtils.dbPatientToApp(patientRow)
+            
+            if (patient) {
+              setPatients((prev) => {
+                const existing = prev.find(p => p.id === patient.id)
+                if (existing) {
+                  return prev.map(p => p.id === patient.id ? patient : p)
+                }
+                return [patient, ...prev]
+              })
+            }
+          } catch (error) {
+            console.error('Error processing patient update from real-time:', error)
           }
         } else if (payload.eventType === 'DELETE') {
           setPatients((prev) => prev.filter(p => p.id !== payload.old.id))
@@ -225,17 +255,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
         schema: 'public',
         table: 'proactive_sequences',
         filter: `user_id=eq.${userId}`,
-      }, async (payload) => {
+      }, (payload) => {
+        // Use payload data directly to avoid database query lag
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          const sequence = await dbSequences.getSequence(supabase, payload.new.id as string, userId)
-          if (sequence) {
-            setSequences((prev) => {
-              const existing = prev.find(s => s.id === sequence.id)
-              if (existing) {
-                return prev.map(s => s.id === sequence.id ? sequence : s)
-              }
-              return [sequence, ...prev]
-            })
+          try {
+            const sequenceRow = payload.new as any
+            const sequence = dbUtils.dbSequenceToApp(sequenceRow)
+            
+            if (sequence) {
+              setSequences((prev) => {
+                const existing = prev.find(s => s.id === sequence.id)
+                if (existing) {
+                  return prev.map(s => s.id === sequence.id ? sequence : s)
+                }
+                return [sequence, ...prev]
+              })
+            }
+          } catch (error) {
+            console.error('Error processing sequence update from real-time:', error)
           }
         } else if (payload.eventType === 'DELETE') {
           setSequences((prev) => prev.filter(s => s.id !== payload.old.id))
