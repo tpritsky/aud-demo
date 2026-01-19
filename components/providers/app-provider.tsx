@@ -53,7 +53,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        // Handle refresh token errors by signing out
+        if (error && (error.message?.includes('refresh_token') || error.message?.includes('Invalid Refresh Token'))) {
+          console.warn('Refresh token invalid, signing out:', error.message)
+          await supabase.auth.signOut()
+          setIsLoggedIn(false)
+          setIsHydrated(true)
+          setIsLoading(false)
+          return
+        }
+        
         if (session?.user) {
           userIdRef.current = session.user.id
           setIsLoggedIn(true)
@@ -61,8 +72,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } else {
           setIsLoggedIn(false)
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error checking session:', error)
+        // Handle refresh token errors
+        if (error?.message?.includes('refresh_token') || error?.message?.includes('Invalid Refresh Token')) {
+          console.warn('Refresh token invalid, signing out')
+          await supabase.auth.signOut()
+        }
         setIsLoggedIn(false)
       } finally {
         setIsHydrated(true)
@@ -78,17 +94,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
         userIdRef.current = session.user.id
         setIsLoggedIn(true)
         await loadInitialData(session.user.id)
-      } else if (event === 'SIGNED_OUT') {
+      } else if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
+        if (event === 'SIGNED_OUT') {
+          userIdRef.current = null
+          setIsLoggedIn(false)
+          // Clear all data
+          setCalls([])
+          setPatients([])
+          setSequences([])
+          setCallbackTasks([])
+          setScheduledCheckIns([])
+          setActivityEvents([])
+          setAgentConfig(initialState.agentConfig)
+        }
+      }
+    })
+
+    // Listen for auth errors (including refresh token errors)
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' && !session) {
+        // Session expired or invalid
         userIdRef.current = null
         setIsLoggedIn(false)
-        // Clear all data
-        setCalls([])
-        setPatients([])
-        setSequences([])
-        setCallbackTasks([])
-        setScheduledCheckIns([])
-        setActivityEvents([])
-        setAgentConfig(initialState.agentConfig)
       }
     })
 
