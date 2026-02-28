@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -84,6 +84,7 @@ const testimonials = [
 
 export default function LandingPage() {
   const router = useRouter()
+  const [authError, setAuthError] = useState<string | null>(null)
 
   // If user lands on home with Supabase auth hash (invite or password reset), send them to set-password flow
   useEffect(() => {
@@ -91,11 +92,43 @@ export default function LandingPage() {
     const hash = window.location.hash
     if (hash && (hash.includes('access_token=') || hash.includes('type=invite') || hash.includes('type=recovery'))) {
       router.replace('/reset-password' + hash)
+      return
+    }
+    // Supabase redirects here with error in hash when invite/reset link is invalid or expired
+    if (hash && (hash.includes('error=') || hash.includes('error_code='))) {
+      const params = new URLSearchParams(hash.replace(/^#/, '').replace(/&sb=$/, ''))
+      const code = params.get('error_code')
+      const desc = params.get('error_description')
+      if (code === 'otp_expired' || params.get('error') === 'access_denied') {
+        setAuthError(
+          desc?.replace(/\+/g, ' ') ?? 'This invite or password reset link is invalid or has expired.'
+        )
+        window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      }
     }
   }, [router])
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Auth error banner (expired invite / invalid link) */}
+      {authError && (
+        <div className="sticky top-0 z-50 border-b border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          <div className="container mx-auto flex flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-8">
+            <p className="text-sm">
+              {authError}
+              <span className="ml-1">Ask your team admin to send a new invite, or try logging in if you already have an account.</span>
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/get-started">Get started / Log in</Link>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setAuthError(null)}>
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Navigation */}
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto flex h-16 items-center justify-between px-4 lg:px-8">
