@@ -1,6 +1,8 @@
 'use client'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -81,6 +83,17 @@ const testimonials = [
 ]
 
 export default function LandingPage() {
+  const router = useRouter()
+
+  // If user lands on home with Supabase auth hash (invite or password reset), send them to set-password flow
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const hash = window.location.hash
+    if (hash && (hash.includes('access_token=') || hash.includes('type=invite') || hash.includes('type=recovery'))) {
+      router.replace('/reset-password' + hash)
+    }
+  }, [router])
+
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}

@@ -88,10 +88,16 @@ You need to run two migrations in order:
 ### Migration 3–7: Call reason/goal, triggers, clinics, vertical/role, contact form, RLS
 Run the remaining migrations in order (003 through 007). **005** adds `clinics` and `profiles.clinic_id`. **006** adds `clinics.vertical`, `clinics.settings`, `profiles.role` (admin/member), and `contact_submissions`. **007** adds RLS so users can read profiles in their clinic (for the Team page).
 
-### Auth: Password reset redirect URL
-For "Forgot password" to work, add your app URL to Supabase **Authentication** → **URL Configuration** → **Redirect URLs**:
-- Local: `http://localhost:3000/reset-password`
-- Production: `https://your-domain.com/reset-password`
+### Auth: Password reset and invite redirect URLs
+For "Forgot password" and **Team invite emails** to work, add your app URLs to Supabase **Authentication** → **URL Configuration**:
+
+- **Site URL**: your production URL (e.g. `https://aud-demo.vercel.app`)
+- **Redirect URLs**: add both:
+  - `http://localhost:3000/reset-password` (local)
+  - `https://your-domain.com/reset-password` (production, e.g. `https://aud-demo.vercel.app/reset-password`)
+  - Optionally `https://your-domain.com` so if Supabase redirects to the root with the token in the hash, the app can redirect the user to `/reset-password` (see landing page logic).
+
+Set **NEXT_PUBLIC_APP_URL** in your deployment (e.g. Vercel) to your production URL so invite emails contain the correct link instead of localhost.
 
 ### Creating the first clinic and clinic admin
 
