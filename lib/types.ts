@@ -6,6 +6,12 @@ export type PatientTag = 'New Fit' | 'Existing' | 'High Risk'
 export type Channel = 'call' | 'sms'
 export type VoiceStyle = 'calm' | 'neutral' | 'upbeat'
 
+/** Clinic vertical / business type for UX and config */
+export type ClinicVertical = 'audiology' | 'ortho' | 'law' | 'general'
+
+/** Profile role within a clinic */
+export type ProfileRole = 'admin' | 'member'
+
 export interface CallEntities {
   name?: string
   phone?: string

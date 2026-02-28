@@ -11,6 +11,7 @@ import {
   Headphones,
   LogOut,
   ClipboardList,
+  UserCog,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/lib/store'
@@ -38,6 +39,12 @@ const navItems = [
     icon: Users,
   },
   {
+    title: 'Team',
+    href: '/team',
+    icon: UserCog,
+    adminOnly: true,
+  },
+  {
     title: 'Settings',
     href: '/settings',
     icon: Settings,
@@ -46,7 +53,8 @@ const navItems = [
 
 export function MobileSidebar() {
   const pathname = usePathname()
-  const { agentConfig, setIsLoggedIn } = useAppStore()
+  const { agentConfig, setIsLoggedIn, profile } = useAppStore()
+  const items = navItems.filter((item) => !('adminOnly' in item && item.adminOnly) || profile?.role === 'admin')
 
   return (
     <div className="flex h-full flex-col bg-sidebar">
@@ -63,7 +71,7 @@ export function MobileSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-4">
-        {navItems.map((item) => {
+        {items.map((item) => {
           const isActive = pathname === item.href || 
             (item.href !== '/dashboard' && pathname.startsWith(item.href))
           

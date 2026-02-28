@@ -11,6 +11,7 @@ import {
   Headphones,
   LogOut,
   ClipboardList,
+  UserCog,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/lib/store'
@@ -37,6 +38,12 @@ const navItems = [
     icon: Users,
   },
   {
+    title: 'Team',
+    href: '/team',
+    icon: UserCog,
+    adminOnly: true,
+  },
+  {
     title: 'Settings',
     href: '/settings',
     icon: Settings,
@@ -45,7 +52,9 @@ const navItems = [
 
 export function SidebarNav() {
   const pathname = usePathname()
-  const { agentConfig, setIsLoggedIn } = useAppStore()
+  const { agentConfig, setIsLoggedIn, profile } = useAppStore()
+
+  const items = navItems.filter((item) => !('adminOnly' in item && item.adminOnly) || profile?.role === 'admin')
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-border bg-sidebar">
@@ -62,7 +71,7 @@ export function SidebarNav() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-4">
-        {navItems.map((item) => {
+        {items.map((item) => {
           const isActive = pathname === item.href || 
             (item.href !== '/dashboard' && pathname.startsWith(item.href))
           

@@ -42,6 +42,34 @@ ELEVENLABS_API_KEY=your_api_key
 
 ## Step 4: Run Database Migrations
 
+You can run migrations either via the **Supabase SQL Editor** (manual) or by **linking the CLI** and using `supabase db push`.
+
+### Option A: Link the Supabase CLI (then use `db push`)
+
+1. **Log in to the CLI** (one-time)  
+   Go to [Supabase Dashboard → Account → Access Tokens](https://supabase.com/dashboard/account/tokens), create a token, then run:
+   ```bash
+   npx supabase login
+   ```
+   Paste the token when prompted.
+
+2. **Get your project reference ID**  
+   In the dashboard: **Project Settings** → **General** → **Reference ID** (e.g. `basyqztnwgweikoleuwh`).
+
+3. **Link this repo to your project** (from the project root):
+   ```bash
+   npx supabase link --project-ref YOUR_PROJECT_REF
+   ```
+   When prompted, enter your **database password** (the one you set for the project in Supabase; find or reset it under **Settings → Database**). The CLI stores it so you don’t have to enter it every time.
+
+4. **Push migrations**:
+   ```bash
+   npx supabase db push
+   ```
+   This applies any new migrations in `supabase/migrations/` that haven’t been applied yet.
+
+### Option B: Run migrations manually in SQL Editor
+
 You need to run two migrations in order:
 
 ### Migration 1: Initial Schema
@@ -56,6 +84,47 @@ You need to run two migrations in order:
 2. Copy the entire SQL content
 3. Paste it into the SQL Editor in Supabase
 4. Click **Run** to execute the migration
+
+### Migration 3–7: Call reason/goal, triggers, clinics, vertical/role, contact form, RLS
+Run the remaining migrations in order (003 through 007). **005** adds `clinics` and `profiles.clinic_id`. **006** adds `clinics.vertical`, `clinics.settings`, `profiles.role` (admin/member), and `contact_submissions`. **007** adds RLS so users can read profiles in their clinic (for the Team page).
+
+### Auth: Password reset redirect URL
+For "Forgot password" to work, add your app URL to Supabase **Authentication** → **URL Configuration** → **Redirect URLs**:
+- Local: `http://localhost:3000/reset-password`
+- Production: `https://your-domain.com/reset-password`
+
+### Creating the first clinic and clinic admin
+
+Only pre-added users can sign in. To onboard a new clinic:
+
+1. **Create the clinic** (SQL Editor or Table Editor):
+   - Table: `clinics`
+   - Insert a row: `name` = your clinic name, `vertical` = `'audiology'`, `'ortho'`, `'law'`, or `'general'`. Note the `id` (UUID).
+
+2. **Create the first user** (Supabase Dashboard):
+   - Go to **Authentication** → **Users** → **Add user** → **Create new user** (or **Invite user**).
+   - Enter email and a temporary password (or send invite). Note the user’s **UUID** (e.g. from the Users table).
+
+3. **Link the user to the clinic as admin** (SQL Editor):
+   - Ensure the user has a row in `profiles` (the signup trigger may have created one).
+   - Update (or insert) the profile so it has:
+     - `id` = the user’s UUID from step 2
+     - `clinic_id` = the clinic `id` from step 1
+     - `role` = `'admin'`
+   - Example (replace UUIDs):
+     ```sql
+     INSERT INTO public.profiles (id, email, full_name, clinic_id, role)
+     VALUES (
+       'user-uuid-from-step-2',
+       'admin@clinic.com',
+       'Clinic Admin',
+       'clinic-uuid-from-step-1',
+       'admin'
+     )
+     ON CONFLICT (id) DO UPDATE SET clinic_id = EXCLUDED.clinic_id, role = EXCLUDED.role;
+     ```
+
+4. The admin can then sign in via **Get started** → **Log into existing business**, and use **Team** to invite more members (who will get an email to set their password and join the same clinic).
 
 These migrations will create:
 - All necessary tables (patients, calls, sequences, callback_tasks, profiles, etc.)

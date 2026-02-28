@@ -45,6 +45,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [profile, setProfile] = useState<{ role: 'admin' | 'member'; clinicId: string | null } | null>(null)
   
   // Use ref to prevent concurrent executions of checkDueItems
   const isProcessingRef = useRef(false)
@@ -98,6 +99,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else if (event === 'SIGNED_OUT') {
         userIdRef.current = null
         setIsLoggedIn(false)
+        setProfile(null)
         // Clear all data
         setCalls([])
         setPatients([])
@@ -121,6 +123,61 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const loadInitialData = async (userId: string) => {
     try {
       setIsLoading(true)
+
+      // Load profile first (role, clinic_id) for Team and access control.
+      // Prefer API route (service role) so we don't depend on RLS / client session.
+      let role: 'admin' | 'member' | null = null
+      let clinicId: string | null = null
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (token) {
+        try {
+          const res = await fetch('/api/profile', {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          if (res.ok) {
+            const data = await res.json()
+            if (data.role === 'admin' || data.role === 'member') {
+              role = data.role
+              clinicId = data.clinicId ?? null
+            }
+          }
+        } catch (_) {
+          // Fall through to direct Supabase fetch
+        }
+      }
+      if (role === null) {
+        const { data: profileRow, error: profileError } = await supabase
+          .from('profiles')
+          .select('role, clinic_id')
+          .eq('id', userId)
+          .single()
+        if (!profileError && profileRow) {
+          const r = profileRow as { role: string; clinic_id?: string | null }
+          if (r.role === 'admin' || r.role === 'member') {
+            role = r.role as 'admin' | 'member'
+            clinicId = r.clinic_id ?? null
+          }
+        } else {
+          if (profileError) {
+            console.warn('[Profile] Failed to load profile:', profileError.message, profileError.code)
+          }
+          const { data: roleRow } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', userId)
+            .single()
+          const r = roleRow as { role: string } | null
+          if (r && (r.role === 'admin' || r.role === 'member')) {
+            role = r.role as 'admin' | 'member'
+          }
+        }
+      }
+      if (role) {
+        setProfile({ role, clinicId })
+      } else {
+        setProfile(null)
+      }
       
       // Load critical data first (calls, patients) to show UI quickly
       // Then load less critical data in parallel
@@ -394,6 +451,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!value) {
       await supabase.auth.signOut()
       setIsLoggedIn(false)
+      setProfile(null)
       userIdRef.current = null
     }
     // Sign in is handled by login screen
@@ -470,6 +528,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       agentConfig,
       kpiData,
       isLoggedIn,
+      profile,
       setCalls,
       addCall: async (call: Call) => {
         if (!userIdRef.current) return
@@ -679,9 +738,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       },
       setIsLoggedIn: handleSetIsLoggedIn,
+      setProfile,
       isHydrated,
     }),
-    [calls, patients, sequences, callbackTasks, scheduledCheckIns, activityEvents, agentConfig, kpiData, isLoggedIn, isHydrated, isLoading]
+    [calls, patients, sequences, callbackTasks, scheduledCheckIns, activityEvents, agentConfig, kpiData, isLoggedIn, profile, isHydrated, isLoading]
   )
 
   // Poll for due tasks and check-ins every minute and trigger calls

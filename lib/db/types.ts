@@ -46,6 +46,21 @@ export interface Database {
         Insert: AgentConfigInsert
         Update: AgentConfigUpdate
       }
+      clinics: {
+        Row: ClinicRow
+        Insert: ClinicInsert
+        Update: ClinicUpdate
+      }
+      profiles: {
+        Row: ProfileRow
+        Insert: ProfileInsert
+        Update: ProfileUpdate
+      }
+      contact_submissions: {
+        Row: ContactSubmissionRow
+        Insert: ContactSubmissionInsert
+        Update: ContactSubmissionUpdate
+      }
     }
   }
 }
@@ -208,3 +223,47 @@ export interface AgentConfigRow {
 
 export type AgentConfigInsert = Omit<AgentConfigRow, 'id' | 'updated_at'>
 export type AgentConfigUpdate = Partial<Omit<AgentConfigRow, 'id' | 'user_id' | 'updated_at'>>
+
+// Clinic types (organizations users belong to)
+export interface ClinicRow {
+  id: string
+  name: string
+  vertical: string
+  settings: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export type ClinicInsert = Omit<ClinicRow, 'id' | 'created_at' | 'updated_at'>
+export type ClinicUpdate = Partial<Omit<ClinicRow, 'id' | 'created_at' | 'updated_at'>>
+
+// Profile types (extends auth.users, links user to clinic)
+export interface ProfileRow {
+  id: string
+  email: string
+  full_name: string | null
+  role: string
+  clinic_name: string | null
+  clinic_id: string | null
+  phone: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ProfileInsert = Omit<ProfileRow, 'created_at' | 'updated_at'>
+export type ProfileUpdate = Partial<Omit<ProfileRow, 'id' | 'created_at'>>
+
+// Contact submission (request-access / Register new business form)
+export interface ContactSubmissionRow {
+  id: string
+  name: string
+  email: string
+  phone: string
+  business_type: string
+  phone_spend: string
+  message: string | null
+  created_at: string
+}
+
+export type ContactSubmissionInsert = Omit<ContactSubmissionRow, 'id' | 'created_at'>
+export type ContactSubmissionUpdate = Partial<Omit<ContactSubmissionRow, 'id' | 'created_at'>>

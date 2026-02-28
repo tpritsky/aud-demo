@@ -108,11 +108,11 @@ export default function LandingPage() {
           </nav>
           <div className="flex items-center gap-3">
             <Button variant="ghost" asChild className="hidden sm:inline-flex">
-              <Link href="/dashboard">Log In</Link>
+              <Link href="/get-started">Get started</Link>
             </Button>
-            <Button asChild>
-              <Link href="/dashboard">
-                Get Started
+            <Button asChild size="default" className="shadow-lg">
+              <Link href="/get-started">
+                Get started
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
@@ -136,14 +136,14 @@ export default function LandingPage() {
               with an intelligent voice assistant designed specifically for hearing healthcare.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button size="lg" asChild>
-                <Link href="/dashboard">
-                  Start Free Trial
-                  <ArrowRight className="ml-2 h-4 w-4" />
+              <Button size="lg" asChild className="text-lg px-8 py-6 shadow-lg">
+                <Link href="/get-started">
+                  Get started
+                  <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
-              <Button size="lg" variant="outline">
-                Watch Demo
+              <Button size="lg" variant="outline" asChild>
+                <Link href="/#features">Watch Demo</Link>
               </Button>
             </div>
           </div>
@@ -386,14 +386,14 @@ export default function LandingPage() {
               Join hundreds of audiology clinics using AudioAssist AI to deliver better care.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button size="lg" asChild>
-                <Link href="/dashboard">
-                  Start Your Free Trial
+              <Button size="lg" asChild className="shadow-lg">
+                <Link href="/get-started">
+                  Get started
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
-              <Button size="lg" variant="outline">
-                Schedule a Demo
+              <Button size="lg" variant="outline" asChild>
+                <Link href="/get-started">Schedule a Demo</Link>
               </Button>
             </div>
             <p className="mt-4 text-sm text-muted-foreground">

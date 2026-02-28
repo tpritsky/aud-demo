@@ -10,6 +10,7 @@ import {
   AgentConfig,
   KPIData,
   ScheduledCheckIn,
+  type ProfileRole,
 } from './types'
 import {
   mockCalls,
@@ -32,6 +33,8 @@ export interface AppState {
   kpiData: KPIData
   isLoggedIn: boolean
   isHydrated: boolean
+  /** Current user's profile (role + clinic). Loaded when logged in. */
+  profile: { role: ProfileRole; clinicId: string | null } | null
 }
 
 export interface AppActions {
@@ -56,6 +59,7 @@ export interface AppActions {
   addActivityEvent: (event: ActivityEvent) => void
   setAgentConfig: (config: AgentConfig) => void
   setIsLoggedIn: (value: boolean) => void
+  setProfile: (profile: { role: ProfileRole; clinicId: string | null } | null) => void
 }
 
 export type AppStore = AppState & AppActions
@@ -71,6 +75,7 @@ export const initialState: AppState = {
   kpiData: mockKPIData,
   isLoggedIn: false,
   isHydrated: false,
+  profile: null,
 }
 
 export const AppContext = createContext<AppStore | null>(null)
