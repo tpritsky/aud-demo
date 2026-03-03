@@ -17,22 +17,31 @@ export default function ResetPasswordPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isReady, setIsReady] = useState(false)
   const [isChecking, setIsChecking] = useState(true)
+  const [checkTimedOut, setCheckTimedOut] = useState(false)
 
   useEffect(() => {
+    let done = false
+    const timeoutId = setTimeout(() => {
+      if (done) return
+      done = true
+      setCheckTimedOut(true)
+      setIsChecking(false)
+    }, 12000)
+
     const init = async () => {
       try {
-        // PKCE: Supabase may redirect with ?code=...; exchange it for a session first
         const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
         const code = params?.get('code')
         if (code) {
           const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+          if (done) return
           if (error) {
-            toast.error('Invalid or expired link', { description: 'Please request a new password reset link.' })
+            toast.error('Invalid or expired link', { description: error.message || 'Please request a new password reset link.' })
             router.replace('/dashboard')
             setIsChecking(false)
             return
           }
-          // Remove code from URL without reload
+          done = true
           if (typeof window !== 'undefined') {
             window.history.replaceState(null, '', window.location.pathname)
           }
@@ -42,6 +51,7 @@ export default function ResetPasswordPage() {
         }
 
         const { data: { session } } = await supabase.auth.getSession()
+        if (done) return
         if (session?.user) {
           setIsReady(true)
         } else {
@@ -50,13 +60,22 @@ export default function ResetPasswordPage() {
           })
           router.replace('/dashboard')
         }
-      } catch {
-        router.replace('/dashboard')
+      } catch (e) {
+        if (!done) {
+          console.error('Reset password init error:', e)
+          toast.error('Something went wrong', { description: 'Please try again or request a new link.' })
+          router.replace('/dashboard')
+        }
       } finally {
-        setIsChecking(false)
+        if (!done) setIsChecking(false)
       }
     }
+
     init()
+    return () => {
+      done = true
+      clearTimeout(timeoutId)
+    }
   }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -90,6 +109,22 @@ export default function ResetPasswordPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <p className="text-muted-foreground">Checking link...</p>
+      </div>
+    )
+  }
+
+  if (checkTimedOut && !isReady) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background p-4">
+        <p className="text-muted-foreground text-center max-w-sm">
+          This is taking too long. The link may have expired or there may be a connection issue.
+        </p>
+        <Link href="/dashboard">
+          <Button variant="outline">Back to sign in</Button>
+        </Link>
+        <p className="text-sm text-muted-foreground">
+          Use &quot;Forgot password?&quot; to request a new link.
+        </p>
       </div>
     )
   }
