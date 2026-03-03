@@ -21,6 +21,26 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const init = async () => {
       try {
+        // PKCE: Supabase may redirect with ?code=...; exchange it for a session first
+        const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+        const code = params?.get('code')
+        if (code) {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+          if (error) {
+            toast.error('Invalid or expired link', { description: 'Please request a new password reset link.' })
+            router.replace('/dashboard')
+            setIsChecking(false)
+            return
+          }
+          // Remove code from URL without reload
+          if (typeof window !== 'undefined') {
+            window.history.replaceState(null, '', window.location.pathname)
+          }
+          setIsReady(true)
+          setIsChecking(false)
+          return
+        }
+
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user) {
           setIsReady(true)

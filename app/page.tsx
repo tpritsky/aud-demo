@@ -86,10 +86,16 @@ export default function LandingPage() {
   const router = useRouter()
   const [authError, setAuthError] = useState<string | null>(null)
 
-  // If user lands on home with Supabase auth hash (invite or password reset), send them to set-password flow
+  // If user lands on home with Supabase auth (invite or password reset), send them to set-password flow
   useEffect(() => {
     if (typeof window === 'undefined') return
     const hash = window.location.hash
+    const search = window.location.search
+    // PKCE flow: Supabase redirects with ?code=...
+    if (search && search.includes('code=')) {
+      router.replace('/reset-password' + search)
+      return
+    }
     if (hash && (hash.includes('access_token=') || hash.includes('type=invite') || hash.includes('type=recovery'))) {
       router.replace('/reset-password' + hash)
       return
