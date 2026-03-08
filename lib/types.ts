@@ -9,8 +9,8 @@ export type VoiceStyle = 'calm' | 'neutral' | 'upbeat'
 /** Clinic vertical / business type for UX and config */
 export type ClinicVertical = 'audiology' | 'ortho' | 'law' | 'general'
 
-/** Profile role within a clinic */
-export type ProfileRole = 'admin' | 'member'
+/** Profile role: super_admin (platform), admin (business owner), member (worker) */
+export type ProfileRole = 'super_admin' | 'admin' | 'member'
 
 export interface CallEntities {
   name?: string

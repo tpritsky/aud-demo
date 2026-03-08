@@ -45,7 +45,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [profile, setProfile] = useState<{ role: 'admin' | 'member'; clinicId: string | null } | null>(null)
+  const [profile, setProfile] = useState<{ role: 'super_admin' | 'admin' | 'member'; clinicId: string | null } | null>(null)
   
   // Use ref to prevent concurrent executions of checkDueItems
   const isProcessingRef = useRef(false)
@@ -126,7 +126,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // Load profile first (role, clinic_id) for Team and access control.
       // Prefer API route (service role) so we don't depend on RLS / client session.
-      let role: 'admin' | 'member' | null = null
+      let role: 'super_admin' | 'admin' | 'member' | null = null
       let clinicId: string | null = null
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -137,7 +137,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })
           if (res.ok) {
             const data = await res.json()
-            if (data.role === 'admin' || data.role === 'member') {
+            if (data.role === 'super_admin' || data.role === 'admin' || data.role === 'member') {
               role = data.role
               clinicId = data.clinicId ?? null
             }
@@ -154,8 +154,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .single()
         if (!profileError && profileRow) {
           const r = profileRow as { role: string; clinic_id?: string | null }
-          if (r.role === 'admin' || r.role === 'member') {
-            role = r.role as 'admin' | 'member'
+          if (r.role === 'super_admin' || r.role === 'admin' || r.role === 'member') {
+            role = r.role as 'super_admin' | 'admin' | 'member'
             clinicId = r.clinic_id ?? null
           }
         } else {
@@ -168,8 +168,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             .eq('id', userId)
             .single()
           const r = roleRow as { role: string } | null
-          if (r && (r.role === 'admin' || r.role === 'member')) {
-            role = r.role as 'admin' | 'member'
+          if (r && (r.role === 'super_admin' || r.role === 'admin' || r.role === 'member')) {
+            role = r.role as 'super_admin' | 'admin' | 'member'
           }
         }
       }

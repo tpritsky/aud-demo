@@ -31,12 +31,15 @@ export async function GET(request: NextRequest) {
     }
 
     const r = profile as { role: string; clinic_id: string | null }
-    if (r.role !== 'admin' && r.role !== 'member') {
+    const role = r.role === 'super_admin' || r.role === 'admin' || r.role === 'member'
+      ? (r.role as 'super_admin' | 'admin' | 'member')
+      : null
+    if (!role) {
       return NextResponse.json({ role: null, clinicId: null })
     }
 
     return NextResponse.json({
-      role: r.role as 'admin' | 'member',
+      role,
       clinicId: r.clinic_id ?? null,
     })
   } catch (e) {
