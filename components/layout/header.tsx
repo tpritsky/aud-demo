@@ -21,8 +21,29 @@ interface HeaderProps {
   title: string
 }
 
+function roleLabel(role: 'super_admin' | 'admin' | 'member'): string {
+  if (role === 'super_admin') return 'Super admin'
+  if (role === 'admin') return 'Administrator'
+  return 'Team member'
+}
+
+function initialsForAccount(fullName: string | null | undefined, email: string): string {
+  const n = fullName?.trim()
+  if (n) {
+    const parts = n.split(/\s+/).filter(Boolean)
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    if (parts.length === 1 && parts[0].length >= 2) {
+      return parts[0].slice(0, 2).toUpperCase()
+    }
+  }
+  const local = email.split('@')[0] || email
+  return local.slice(0, 2).toUpperCase()
+}
+
 export function Header({ title }: HeaderProps) {
-  const { callbackTasks, setIsLoggedIn } = useAppStore()
+  const { callbackTasks, setIsLoggedIn, sessionAccount } = useAppStore()
   const pendingTasks = callbackTasks.filter((t) => {
     // Derive status from attempts
     const hasAnswered = t.attempts.some(a => a.outcome === 'answered')
@@ -101,14 +122,25 @@ export function Header({ title }: HeaderProps) {
             <Button variant="ghost" size="icon" className="rounded-full">
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                  AD
+                  {sessionAccount
+                    ? initialsForAccount(sessionAccount.fullName, sessionAccount.email)
+                    : '…'}
                 </AvatarFallback>
               </Avatar>
               <span className="sr-only">User menu</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Admin User</DropdownMenuLabel>
+            <DropdownMenuLabel className="space-y-0.5">
+              <span className="font-medium">
+                {sessionAccount?.fullName?.trim() || sessionAccount?.email || 'Account'}
+              </span>
+              {sessionAccount ? (
+                <span className="block text-xs font-normal text-muted-foreground">
+                  {roleLabel(sessionAccount.role)}
+                </span>
+              ) : null}
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setIsLoggedIn(false)}>
               Sign out

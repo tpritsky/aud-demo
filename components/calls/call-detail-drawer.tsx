@@ -46,6 +46,7 @@ import {
   FileText,
   Download,
   PhoneCall,
+  Sparkles,
 } from 'lucide-react'
 
 interface CallDetailDrawerProps {
@@ -232,6 +233,52 @@ ${Object.entries(currentCall.entities)
           </SheetHeader>
 
           <div className="mt-2 space-y-6 px-6 pb-6">
+            {/* AI post-processing */}
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                AI triage
+              </h3>
+              <p className="text-xs text-muted-foreground capitalize">
+                Status: {currentCall.aiProcessingStatus?.replace('_', ' ') ?? 'pending'}
+              </p>
+              {currentCall.aiError ? (
+                <p className="text-xs text-destructive">{currentCall.aiError}</p>
+              ) : null}
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground text-xs">Urgency (1–4)</span>
+                  <p className="font-medium">{currentCall.aiResponseUrgency ?? '—'}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Business value (1–4)</span>
+                  <p className="font-medium">{currentCall.aiBusinessValue ?? '—'}</p>
+                </div>
+              </div>
+              {(currentCall.aiCallerName || currentCall.aiCallerPhone) && (
+                <div className="text-sm space-y-1">
+                  <span className="text-muted-foreground text-xs">Extracted from transcript</span>
+                  {currentCall.aiCallerName ? <p>Name: {currentCall.aiCallerName}</p> : null}
+                  {currentCall.aiCallerPhone ? <p>Phone: {currentCall.aiCallerPhone}</p> : null}
+                </div>
+              )}
+              {currentCall.aiBriefSummary ? (
+                <div>
+                  <span className="text-muted-foreground text-xs">Brief summary</span>
+                  <p className="text-sm mt-1">{currentCall.aiBriefSummary}</p>
+                </div>
+              ) : null}
+              {currentCall.aiTags && currentCall.aiTags.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {currentCall.aiTags.map((t) => (
+                    <Badge key={t} variant="secondary" className="text-xs font-normal">
+                      {t}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
             {/* Caller Info */}
             <div className="space-y-4">
               <h3 className="text-sm font-medium text-muted-foreground">Caller Information</h3>

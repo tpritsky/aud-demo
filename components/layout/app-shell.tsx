@@ -3,6 +3,7 @@
 import { ReactNode } from 'react'
 import { SidebarNav } from './sidebar-nav'
 import { Header } from './header'
+import { ViewAsBanner } from '@/components/view-as-banner'
 import { useAppStore } from '@/lib/store'
 import { LoginScreen } from '@/components/auth/login-screen'
 
@@ -29,6 +30,7 @@ export function AppShell({ children, title }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-background">
+      <ViewAsBanner />
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
         <SidebarNav />

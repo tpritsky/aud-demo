@@ -20,6 +20,8 @@ export interface CallEntities {
   issueType?: string
 }
 
+export type CallAiProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'skipped'
+
 export interface Call {
   id: string
   timestamp: Date
@@ -39,6 +41,17 @@ export interface Call {
   }
   transcript: string
   entities: CallEntities
+  /** Owning user (legacy); clinic-wide listing uses clinicId + RLS */
+  clinicId?: string | null
+  aiProcessingStatus?: CallAiProcessingStatus
+  aiBriefSummary?: string | null
+  aiCallerName?: string | null
+  aiCallerPhone?: string | null
+  aiResponseUrgency?: 1 | 2 | 3 | 4 | null
+  aiBusinessValue?: 1 | 2 | 3 | 4 | null
+  aiTags?: string[]
+  aiProcessedAt?: Date | null
+  aiError?: string | null
 }
 
 export interface AdoptionSignals {

@@ -59,12 +59,18 @@ async function main() {
 
   if (createError) {
     if (createError.message && createError.message.includes('already been registered')) {
-      console.log('User already exists. Updating profile to super_admin...')
+      console.log('User already exists. Updating profile to super_admin and setting password...')
       const { data: existing } = await supabase.auth.admin.listUsers()
       const existingUser = existing?.users?.find((u) => u.email === email)
       if (!existingUser) {
         console.error('Could not find existing user.')
         process.exit(1)
+      }
+      const { error: passwordError } = await supabase.auth.admin.updateUserById(existingUser.id, { password })
+      if (passwordError) {
+        console.error('Failed to set password:', passwordError.message)
+      } else {
+        console.log('Password updated.')
       }
       const { error: updateError } = await supabase
         .from('profiles')

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { normalizePhoneNumber } from '@/lib/phone-format'
+import { createServerClient } from '@/lib/supabase/server'
 
 interface ConversationInitiationClientData {
   dynamic_variables?: {
@@ -53,12 +54,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get API key from environment variable
-    const apiKey = process.env.ELEVENLABS_API_KEY || 'sk_2d643abad4cb9234e254bcbea963bfb2e4c8bd55ab69061f'
-    
+    const apiKey = process.env.ELEVENLABS_API_KEY
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'Eleven Labs API key not configured' },
+        { error: 'Eleven Labs API key not configured (ELEVENLABS_API_KEY)' },
         { status: 500 }
       )
     }
@@ -102,6 +101,28 @@ export async function POST(request: NextRequest) {
     const data: ElevenLabsResponse = await response.json()
 
     console.log('Call triggered successfully:', data)
+
+    const authHeader = request.headers.get('Authorization')
+    const token = authHeader?.replace(/^Bearer\s+/i, '')
+    if (token && data.conversation_id) {
+      const supabase = createServerClient()
+      const {
+        data: { user },
+        error: authErr,
+      } = await supabase.auth.getUser(token)
+      if (!authErr && user?.id) {
+        const { error: claimErr } = await supabase.from('conversation_claims').upsert(
+          {
+            conversation_id: data.conversation_id,
+            user_id: user.id,
+          },
+          { onConflict: 'conversation_id' }
+        )
+        if (claimErr) {
+          console.error('[calls/trigger] conversation_claims upsert:', claimErr.message)
+        }
+      }
+    }
 
     return NextResponse.json(
       {

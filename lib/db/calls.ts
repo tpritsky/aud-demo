@@ -45,8 +45,29 @@ export async function getCall(supabase: Supabase, callId: string, userId: string
   return data ? dbCallToApp(data) : null
 }
 
-export async function createCall(supabase: Supabase, call: Call, userId: string): Promise<Call> {
-  const insertData = appCallToDb(call, userId)
+/** All calls visible to the current user via RLS (own user_id or shared clinic_id). */
+export async function listCallsForSession(supabase: Supabase, limit = 200): Promise<Call[]> {
+  const { data, error } = await supabase
+    .from('calls')
+    .select('*')
+    .order('timestamp', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('Error fetching calls (RLS):', error)
+    throw error
+  }
+
+  return (data || []).map(dbCallToApp)
+}
+
+export async function createCall(
+  supabase: Supabase,
+  call: Call,
+  userId: string,
+  clinicId?: string | null
+): Promise<Call> {
+  const insertData = appCallToDb(call, userId, clinicId)
   
   const { data, error } = await supabase
     .from('calls')
@@ -83,6 +104,18 @@ export async function updateCall(
   if (updates.summary !== undefined) updateData.summary = updates.summary as unknown as Record<string, unknown>
   if (updates.transcript !== undefined) updateData.transcript = updates.transcript
   if (updates.entities !== undefined) updateData.entities = updates.entities as unknown as Record<string, unknown>
+  if (updates.clinicId !== undefined) updateData.clinic_id = updates.clinicId
+  if (updates.aiProcessingStatus !== undefined) updateData.ai_processing_status = updates.aiProcessingStatus
+  if (updates.aiBriefSummary !== undefined) updateData.ai_brief_summary = updates.aiBriefSummary
+  if (updates.aiCallerName !== undefined) updateData.ai_caller_name = updates.aiCallerName
+  if (updates.aiCallerPhone !== undefined) updateData.ai_caller_phone = updates.aiCallerPhone
+  if (updates.aiResponseUrgency !== undefined) updateData.ai_response_urgency = updates.aiResponseUrgency
+  if (updates.aiBusinessValue !== undefined) updateData.ai_business_value = updates.aiBusinessValue
+  if (updates.aiTags !== undefined) updateData.ai_tags = updates.aiTags
+  if (updates.aiProcessedAt !== undefined) {
+    updateData.ai_processed_at = updates.aiProcessedAt ? updates.aiProcessedAt.toISOString() : null
+  }
+  if (updates.aiError !== undefined) updateData.ai_error = updates.aiError
 
   const { data, error } = await supabase
     .from('calls')

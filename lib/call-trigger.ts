@@ -1,4 +1,5 @@
 import { normalizePhoneNumber } from './phone-format'
+import { supabase } from '@/lib/supabase/client'
 
 export interface CallDynamicVariables {
   call_reason?: string
@@ -45,11 +46,15 @@ export async function triggerOutboundCall(
       }
     }
 
+    const { data: { session } } = await supabase.auth.getSession()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (session?.access_token) {
+      headers.Authorization = `Bearer ${session.access_token}`
+    }
+
     const response = await fetch('/api/calls/trigger', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(payload),
     })
 

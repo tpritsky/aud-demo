@@ -22,25 +22,32 @@ export async function GET(request: NextRequest) {
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('role, clinic_id')
+      .select('role, clinic_id, email, full_name')
       .eq('id', user.id)
       .single()
 
     if (profileError || !profile) {
-      return NextResponse.json({ role: null, clinicId: null })
+      return NextResponse.json({ role: null, clinicId: null, email: null, fullName: null })
     }
 
-    const r = profile as { role: string; clinic_id: string | null }
+    const r = profile as {
+      role: string
+      clinic_id: string | null
+      email: string
+      full_name: string | null
+    }
     const role = r.role === 'super_admin' || r.role === 'admin' || r.role === 'member'
       ? (r.role as 'super_admin' | 'admin' | 'member')
       : null
     if (!role) {
-      return NextResponse.json({ role: null, clinicId: null })
+      return NextResponse.json({ role: null, clinicId: null, email: r.email ?? null, fullName: r.full_name ?? null })
     }
 
     return NextResponse.json({
       role,
       clinicId: r.clinic_id ?? null,
+      email: r.email ?? user.email ?? null,
+      fullName: r.full_name ?? null,
     })
   } catch (e) {
     console.error('Profile API error:', e)

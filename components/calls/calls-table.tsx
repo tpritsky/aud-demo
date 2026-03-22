@@ -17,11 +17,22 @@ import { Call } from '@/lib/types'
 import { CallFilters, CallFiltersComponent } from './call-filters'
 import { CallDetailDrawer } from './call-detail-drawer'
 import { ChevronRight, AlertTriangle } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
+
+type CallSort = 'recent' | 'urgency' | 'value'
 
 export function CallsTable() {
   const { calls, patients } = useAppStore()
   const [selectedCall, setSelectedCall] = useState<Call | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  const [sortBy, setSortBy] = useState<CallSort>('urgency')
   const [filters, setFilters] = useState<CallFilters>({
     intent: 'all',
     outcome: 'all',
@@ -29,41 +40,51 @@ export function CallsTable() {
     search: '',
   })
 
+  const tierRank = (n: 1 | 2 | 3 | 4 | null | undefined) => (n == null ? 0 : n)
+
   const filteredCalls = useMemo(() => {
-    return calls
-      .filter((call) => {
-        if (filters.intent !== 'all' && call.intent !== filters.intent) return false
-        if (filters.outcome !== 'all' && call.outcome !== filters.outcome) return false
-        if (filters.escalated === 'yes' && !call.escalated) return false
-        if (filters.escalated === 'no' && call.escalated) return false
-        if (filters.search) {
-          const search = filters.search.toLowerCase()
-          return (
-            call.callerName.toLowerCase().includes(search) ||
-            call.phone.includes(search) ||
-            call.summary.reason.toLowerCase().includes(search)
-          )
-        }
-        return true
-      })
-      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-  }, [calls, filters])
+    const filtered = calls.filter((call) => {
+      if (filters.intent !== 'all' && call.intent !== filters.intent) return false
+      if (filters.outcome !== 'all' && call.outcome !== filters.outcome) return false
+      if (filters.escalated === 'yes' && !call.escalated) return false
+      if (filters.escalated === 'no' && call.escalated) return false
+      if (filters.search) {
+        const search = filters.search.toLowerCase()
+        const aiText = [call.aiBriefSummary, ...(call.aiTags || []), call.aiCallerName, call.aiCallerPhone]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+        return (
+          call.callerName.toLowerCase().includes(search) ||
+          call.phone.includes(search) ||
+          call.summary.reason.toLowerCase().includes(search) ||
+          aiText.includes(search)
+        )
+      }
+      return true
+    })
+
+    const byRecent = (a: Call, b: Call) => b.timestamp.getTime() - a.timestamp.getTime()
+    const byUrgency = (a: Call, b: Call) => {
+      const d = tierRank(b.aiResponseUrgency) - tierRank(a.aiResponseUrgency)
+      if (d !== 0) return d
+      return byRecent(a, b)
+    }
+    const byValue = (a: Call, b: Call) => {
+      const d = tierRank(b.aiBusinessValue) - tierRank(a.aiBusinessValue)
+      if (d !== 0) return d
+      return byRecent(a, b)
+    }
+
+    if (sortBy === 'urgency') return [...filtered].sort(byUrgency)
+    if (sortBy === 'value') return [...filtered].sort(byValue)
+    return [...filtered].sort(byRecent)
+  }, [calls, filters, sortBy])
 
   const getPatientName = (patientId?: string) => {
     if (!patientId) return null
     const patient = patients.find((p) => p.id === patientId)
     return patient?.name || null
-  }
-
-  const getSentimentColor = (sentiment: Call['sentiment']) => {
-    switch (sentiment) {
-      case 'positive':
-        return 'bg-success/10 text-success'
-      case 'negative':
-        return 'bg-destructive/10 text-destructive'
-      default:
-        return 'bg-muted text-muted-foreground'
-    }
   }
 
   const getOutcomeColor = (outcome: Call['outcome']) => {
@@ -108,22 +129,69 @@ export function CallsTable() {
     setIsDrawerOpen(true)
   }
 
+  const urgencyBadge = (u: Call['aiResponseUrgency']) => {
+    if (u == null) return <span className="text-muted-foreground text-xs">—</span>
+    const label = `P${u}`
+    const cls =
+      u >= 4
+        ? 'bg-destructive/15 text-destructive'
+        : u === 3
+          ? 'bg-orange-500/15 text-orange-700 dark:text-orange-400'
+          : u === 2
+            ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+            : 'bg-muted text-muted-foreground'
+    return <Badge className={cls}>{label}</Badge>
+  }
+
+  const valueBadge = (v: Call['aiBusinessValue']) => {
+    if (v == null) return <span className="text-muted-foreground text-xs">—</span>
+    const label = `V${v}`
+    const cls =
+      v >= 4
+        ? 'bg-emerald-600/15 text-emerald-800 dark:text-emerald-300'
+        : v === 3
+          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+          : v === 2
+            ? 'bg-secondary text-secondary-foreground'
+            : 'bg-muted text-muted-foreground'
+    return <Badge className={cls}>{label}</Badge>
+  }
+
   return (
     <div className="space-y-4">
-      <CallFiltersComponent filters={filters} onFiltersChange={setFilters} />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <CallFiltersComponent filters={filters} onFiltersChange={setFilters} />
+        <div className="flex items-center gap-2 shrink-0">
+          <Label htmlFor="call-sort" className="text-muted-foreground whitespace-nowrap text-sm">
+            Sort
+          </Label>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as CallSort)}>
+            <SelectTrigger id="call-sort" className="w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="urgency">Urgency (AI, high first)</SelectItem>
+              <SelectItem value="value">Business value (AI, high first)</SelectItem>
+              <SelectItem value="recent">Most recent</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Time</TableHead>
+              <TableHead className="w-[72px]">Urg.</TableHead>
+              <TableHead className="w-[72px]">Value</TableHead>
               <TableHead>Caller</TableHead>
+              <TableHead className="hidden lg:table-cell max-w-[200px]">AI summary</TableHead>
               <TableHead className="hidden md:table-cell">Patient</TableHead>
               <TableHead className="hidden sm:table-cell">Intent</TableHead>
               <TableHead>Outcome</TableHead>
               <TableHead className="hidden sm:table-cell">Status</TableHead>
-              <TableHead className="hidden lg:table-cell">Duration</TableHead>
-              <TableHead className="hidden lg:table-cell">Sentiment</TableHead>
+              <TableHead className="hidden xl:table-cell">Duration</TableHead>
               <TableHead className="hidden md:table-cell">Escalated</TableHead>
               <TableHead className="w-10"></TableHead>
             </TableRow>
@@ -131,7 +199,7 @@ export function CallsTable() {
           <TableBody>
             {filteredCalls.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="h-24 text-center">
+                <TableCell colSpan={12} className="h-24 text-center">
                   No calls found matching your filters.
                 </TableCell>
               </TableRow>
@@ -145,11 +213,32 @@ export function CallsTable() {
                   <TableCell className="font-medium">
                     {formatDateTime(call.timestamp)}
                   </TableCell>
+                  <TableCell>{urgencyBadge(call.aiResponseUrgency)}</TableCell>
+                  <TableCell>{valueBadge(call.aiBusinessValue)}</TableCell>
                   <TableCell>
                     <div>
                       <p className="font-medium">{call.callerName}</p>
                       <p className="text-xs text-muted-foreground">{call.phone}</p>
+                      {call.aiProcessingStatus && call.aiProcessingStatus !== 'completed' ? (
+                        <p className="text-xs text-muted-foreground mt-0.5 capitalize">
+                          AI: {call.aiProcessingStatus.replace('_', ' ')}
+                        </p>
+                      ) : null}
                     </div>
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell max-w-[200px]">
+                    <p className="text-sm line-clamp-2 text-muted-foreground">
+                      {call.aiBriefSummary || '—'}
+                    </p>
+                    {call.aiTags && call.aiTags.length > 0 ? (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {call.aiTags.slice(0, 3).map((t) => (
+                          <Badge key={t} variant="outline" className="text-[10px] px-1 py-0 font-normal">
+                            {t}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     {getPatientName(call.patientId) || (
@@ -169,13 +258,8 @@ export function CallsTable() {
                       {call.status.replace('_', ' ')}
                     </Badge>
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell text-muted-foreground">
+                  <TableCell className="hidden xl:table-cell text-muted-foreground">
                     {formatDuration(call.durationSec)}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    <Badge className={getSentimentColor(call.sentiment)}>
-                      {call.sentiment}
-                    </Badge>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     {call.escalated ? (

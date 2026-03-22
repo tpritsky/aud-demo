@@ -33,8 +33,12 @@ export interface AppState {
   kpiData: KPIData
   isLoggedIn: boolean
   isHydrated: boolean
-  /** Current user's profile (role + clinic). Loaded when logged in. */
+  /** Current user's profile (role + clinic). Loaded when logged in; may be swapped during super_admin view-as. */
   profile: { role: ProfileRole; clinicId: string | null } | null
+  /** Signed-in user for shell (header): name, email, real role — not swapped during view-as. */
+  sessionAccount: { email: string; fullName: string | null; role: ProfileRole } | null
+  /** When set, UI and data reflect this user (super_admin "view as" mode). */
+  viewAs: { userId: string; displayName: string } | null
 }
 
 export interface AppActions {
@@ -57,9 +61,12 @@ export interface AppActions {
   clearFutureCheckIns: () => void
   checkAndProcessDueItems: () => void
   addActivityEvent: (event: ActivityEvent) => void
+  setActivityEvents: (events: ActivityEvent[]) => void
   setAgentConfig: (config: AgentConfig) => void
   setIsLoggedIn: (value: boolean) => void
   setProfile: (profile: { role: ProfileRole; clinicId: string | null } | null) => void
+  setViewAs: (viewAs: { userId: string; displayName: string } | null) => void
+  clearViewAs: () => void | Promise<void>
 }
 
 export type AppStore = AppState & AppActions
@@ -76,6 +83,8 @@ export const initialState: AppState = {
   isLoggedIn: false,
   isHydrated: false,
   profile: null,
+  sessionAccount: null,
+  viewAs: null,
 }
 
 export const AppContext = createContext<AppStore | null>(null)

@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { Building2, Sparkles } from 'lucide-react'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
@@ -18,9 +19,19 @@ export default function ResetPasswordPage() {
   const [isReady, setIsReady] = useState(false)
   const [isChecking, setIsChecking] = useState(true)
   const [checkTimedOut, setCheckTimedOut] = useState(false)
+  const [inviteOnboarding, setInviteOnboarding] = useState(false)
+  const [clinicName, setClinicName] = useState<string | null>(null)
 
   useEffect(() => {
     let done = false
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search)
+      const hash = window.location.hash
+      const fromQuery = sp.get('flow') === 'invite'
+      const fromHash = Boolean(hash && hash.includes('type=invite'))
+      setInviteOnboarding(fromQuery || fromHash)
+    }
+
     const timeoutId = setTimeout(() => {
       if (done) return
       done = true
@@ -28,12 +39,25 @@ export default function ResetPasswordPage() {
       setIsChecking(false)
     }, 12000)
 
+    const loadClinicLabel = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) return
+      const { data: row } = await supabase
+        .from('profiles')
+        .select('clinics(name)')
+        .eq('id', session.user.id)
+        .maybeSingle()
+      const nested = row as { clinics?: { name?: string } | null } | null
+      const name = nested?.clinics?.name
+      if (name) setClinicName(name)
+    }
+
     const init = async () => {
       try {
         const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
         const code = params?.get('code')
         if (code) {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
           if (done) return
           if (error) {
             toast.error('Invalid or expired link', { description: error.message || 'Please request a new password reset link.' })
@@ -43,10 +67,13 @@ export default function ResetPasswordPage() {
           }
           done = true
           if (typeof window !== 'undefined') {
-            window.history.replaceState(null, '', window.location.pathname)
+            const path = window.location.pathname
+            const keepInvite = params?.get('flow') === 'invite'
+            window.history.replaceState(null, '', keepInvite ? `${path}?flow=invite` : path)
           }
           setIsReady(true)
           setIsChecking(false)
+          await loadClinicLabel()
           return
         }
 
@@ -54,6 +81,7 @@ export default function ResetPasswordPage() {
         if (done) return
         if (session?.user) {
           setIsReady(true)
+          await loadClinicLabel()
         } else {
           toast.error('Invalid or expired link', {
             description: 'Please request a new password reset link.',
@@ -96,7 +124,7 @@ export default function ResetPasswordPage() {
         setIsLoading(false)
         return
       }
-      toast.success('Password updated. Signing you in...')
+      toast.success(inviteOnboarding ? 'You’re all set' : 'Password updated. Signing you in…')
       router.replace('/dashboard')
     } catch {
       toast.error('Something went wrong')
@@ -131,13 +159,31 @@ export default function ResetPasswordPage() {
 
   if (!isReady) return null
 
+  const title = inviteOnboarding ? 'Welcome — finish your account' : 'Set new password'
+  const description = inviteOnboarding
+    ? clinicName
+      ? `You’re joining ${clinicName}. Choose a password to access the dashboard.`
+      : 'Choose a password to access your team’s dashboard.'
+    : 'Enter your new password below.'
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Set new password</CardTitle>
-          <CardDescription>
-            Enter your new password below.
+          {inviteOnboarding ? (
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Sparkles className="h-6 w-6 text-primary" />
+            </div>
+          ) : null}
+          <CardTitle className="text-2xl">{title}</CardTitle>
+          <CardDescription className="flex flex-col items-center gap-2 text-center">
+            <span>{description}</span>
+            {inviteOnboarding && clinicName ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/50 px-3 py-1 text-xs font-medium text-foreground">
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                {clinicName}
+              </span>
+            ) : null}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -167,7 +213,7 @@ export default function ResetPasswordPage() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Updating...' : 'Update password'}
+              {isLoading ? 'Saving…' : inviteOnboarding ? 'Complete setup' : 'Update password'}
             </Button>
             <div className="text-center">
               <Link

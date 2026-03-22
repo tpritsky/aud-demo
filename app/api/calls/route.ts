@@ -4,6 +4,7 @@ import { Call, CallIntent, CallOutcome, CallStatus, Sentiment } from '@/lib/type
 import { createServerClient } from '@/lib/supabase/server'
 import * as dbCalls from '@/lib/db/calls'
 import { normalizePhoneNumber } from '@/lib/phone-format'
+import { enqueueCallPostProcess } from '@/lib/ai/enqueue-call-post-process'
 
 interface ElevenLabsWebhook {
   type: string
@@ -423,8 +424,22 @@ export async function POST(request: NextRequest) {
       .limit(1)
     
     let userId: string | null = null
+
+    // Strategy 0: Outbound / test calls — user claimed this conversation_id when triggering from the app
+    if (call.id) {
+      const { data: claim } = await supabase
+        .from('conversation_claims')
+        .select('user_id')
+        .eq('conversation_id', call.id)
+        .maybeSingle()
+      const cid = (claim as { user_id?: string } | null)?.user_id
+      if (cid) {
+        userId = cid
+        console.log('Matched conversation_claims for user_id:', userId)
+      }
+    }
     
-    if (patients && patients.length > 0) {
+    if (!userId && patients && patients.length > 0) {
       call.patientId = patients[0].id
       userId = patients[0].user_id
     }
@@ -552,6 +567,13 @@ export async function POST(request: NextRequest) {
         { status: 200 } // Still return 200 to acknowledge webhook
       )
     }
+
+    const { data: inviterProfile } = await supabase
+      .from('profiles')
+      .select('clinic_id')
+      .eq('id', userId)
+      .maybeSingle()
+    const ownerClinicId = (inviterProfile as { clinic_id?: string | null } | null)?.clinic_id ?? null
     
     // Check if call already exists
     console.log('User ID determined:', userId)
@@ -583,17 +605,23 @@ export async function POST(request: NextRequest) {
         summary: call.summary,
         transcript: call.transcript,
         entities: call.entities,
+        clinicId: existingCall.clinicId ?? ownerClinicId,
       }
       await dbCalls.updateCall(supabase, call.id, updates, userId)
       console.log('Call updated successfully:', call.id)
+      if (
+        existingCall.aiProcessingStatus === 'pending' ||
+        existingCall.aiProcessingStatus === 'failed'
+      ) {
+        await enqueueCallPostProcess(call.id)
+      }
     } else {
       // Create new call
       console.log('Creating new call in database...')
-      await dbCalls.createCall(supabase, call, userId)
+      const callWithClinic: Call = { ...call, clinicId: ownerClinicId }
+      await dbCalls.createCall(supabase, callWithClinic, userId, ownerClinicId)
       console.log('Call stored successfully:', call.id)
-      
-      // Check if this call matches a scheduled check-in or callback task
-      // This will be handled by the client-side real-time subscriptions
+      await enqueueCallPostProcess(call.id)
     }
     
     return NextResponse.json(

@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,11 +18,17 @@ import {
 import { useAppStore } from '@/lib/store'
 import { toast } from 'sonner'
 import { VoiceStyle } from '@/lib/types'
+import { triggerOutboundCall, type CallDynamicVariables } from '@/lib/call-trigger'
 import { Save, Building2, Phone, Clock, Mic, Gauge, Settings2, AlertTriangle, PhoneCall, RotateCcw } from 'lucide-react'
 // useToast not needed - using toast directly from sonner
 
 export function AgentConfigurationTab() {
   const { agentConfig, setAgentConfig } = useAppStore()
+  const [testPhone, setTestPhone] = useState('')
+  const [isTestCalling, setIsTestCalling] = useState(false)
+
+  const outboundAgentId = agentConfig.elevenLabsOutboundAgentId || agentConfig.elevenLabsAgentId
+  const canTestCall = !!outboundAgentId && !!agentConfig.elevenLabsPhoneNumberId
 
   const handleSave = () => {
     toast.success('Settings Saved', {
@@ -165,6 +172,89 @@ export function AgentConfigurationTab() {
               </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Test call bot */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PhoneCall className="h-5 w-5" />
+            Try the call bot
+          </CardTitle>
+          <CardDescription>
+            Place a test outbound call to your phone. The AI will use your clinic name and a test script.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!canTestCall ? (
+            <p className="text-sm text-muted-foreground">
+              Set <strong>Eleven Labs Outbound Agent ID</strong> and <strong>Eleven Labs Phone Number ID</strong> above, then save, to enable test calls.
+            </p>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="test-phone">Your phone number</Label>
+                <div className="relative max-w-xs">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="test-phone"
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    placeholder="+1 (555) 123-4567"
+                    className="pl-9"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  E.164 format (e.g. +15551234567). US numbers: 10 digits with optional +1.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Calls appear in your log after ElevenLabs posts the post-call webhook to your app. On local dev,
+                  that URL must be publicly reachable (e.g. tunnel or deployed preview), not plain localhost.
+                </p>
+              </div>
+              <Button
+                onClick={async () => {
+                  if (!testPhone.trim()) {
+                    toast.error('Enter your phone number')
+                    return
+                  }
+                  setIsTestCalling(true)
+                  try {
+                    const dynamicVars: CallDynamicVariables = {
+                      patient_name: 'Test User',
+                      clinic_name: agentConfig.clinicName || 'Demo Clinic',
+                      call_reason: 'Test call',
+                      call_goal: 'Verify the voice bot is working',
+                    }
+                    const result = await triggerOutboundCall(
+                      testPhone.trim(),
+                      outboundAgentId!,
+                      agentConfig.elevenLabsPhoneNumberId!,
+                      dynamicVars
+                    )
+                    if (result.success) {
+                      toast.success('Call started', {
+                        description: 'The bot should be calling you now. Answer to try it out.',
+                      })
+                      setTestPhone('')
+                    } else {
+                      toast.error('Call failed', { description: result.error })
+                    }
+                  } catch (e) {
+                    toast.error('Call failed', {
+                      description: e instanceof Error ? e.message : 'Unknown error',
+                    })
+                  } finally {
+                    setIsTestCalling(false)
+                  }
+                }}
+                disabled={isTestCalling || !testPhone.trim()}
+              >
+                {isTestCalling ? 'Calling…' : 'Call my phone'}
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
 
