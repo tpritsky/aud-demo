@@ -4,7 +4,8 @@ import { AppShell } from '@/components/layout/app-shell'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AgentConfigurationTab } from '@/components/settings/agent-configuration-tab'
 import { ProactiveCheckInsTab } from '@/components/settings/proactive-checkins-tab'
-import { Bot, CalendarClock } from 'lucide-react'
+import { DeleteAccountSection } from '@/components/settings/delete-account-section'
+import { Bot, CalendarClock, UserX } from 'lucide-react'
 
 export default function SettingsPage() {
   return (
@@ -18,14 +19,18 @@ export default function SettingsPage() {
         </div>
 
         <Tabs defaultValue="agent" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-2xl grid-cols-3">
             <TabsTrigger value="agent" className="flex items-center gap-2">
               <Bot className="h-4 w-4" />
-              Agent Configuration
+              Agent
             </TabsTrigger>
             <TabsTrigger value="checkins" className="flex items-center gap-2">
               <CalendarClock className="h-4 w-4" />
-              Proactive Check-ins
+              Check-ins
+            </TabsTrigger>
+            <TabsTrigger value="account" className="flex items-center gap-2">
+              <UserX className="h-4 w-4" />
+              Account
             </TabsTrigger>
           </TabsList>
 
@@ -35,6 +40,10 @@ export default function SettingsPage() {
 
           <TabsContent value="checkins">
             <ProactiveCheckInsTab />
+          </TabsContent>
+
+          <TabsContent value="account">
+            <DeleteAccountSection />
           </TabsContent>
         </Tabs>
       </div>

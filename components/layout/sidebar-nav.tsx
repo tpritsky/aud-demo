@@ -12,49 +12,32 @@ import {
   LogOut,
   ClipboardList,
   UserCog,
+  Building2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/lib/store'
 
 const navItems = [
-  {
-    title: 'Dashboard',
-    href: '/dashboard',
-    icon: LayoutDashboard,
-  },
-  {
-    title: 'Calls',
-    href: '/calls',
-    icon: Phone,
-  },
-  {
-    title: 'Tasks',
-    href: '/tasks',
-    icon: ClipboardList,
-  },
-  {
-    title: 'Patients',
-    href: '/patients',
-    icon: Users,
-  },
-  {
-    title: 'Team',
-    href: '/team',
-    icon: UserCog,
-    adminOnly: true,
-  },
-  {
-    title: 'Settings',
-    href: '/settings',
-    icon: Settings,
-  },
+  { title: 'Businesses', href: '/businesses', icon: Building2, superAdminOnly: true },
+  { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { title: 'Calls', href: '/calls', icon: Phone },
+  { title: 'Tasks', href: '/tasks', icon: ClipboardList },
+  { title: 'Patients', href: '/patients', icon: Users },
+  { title: 'Team', href: '/team', icon: UserCog, adminOnly: true },
+  { title: 'Settings', href: '/settings', icon: Settings },
 ]
 
 export function SidebarNav() {
   const pathname = usePathname()
   const { agentConfig, setIsLoggedIn, profile } = useAppStore()
 
-  const items = navItems.filter((item) => !('adminOnly' in item && item.adminOnly) || profile?.role === 'admin')
+  const isSuperAdmin = profile?.role === 'super_admin'
+  const items = navItems.filter((item) => {
+    if ('superAdminOnly' in item && item.superAdminOnly) return isSuperAdmin
+    if (isSuperAdmin) return item.href === '/businesses' || item.href === '/dashboard' || item.href === '/settings'
+    if ('adminOnly' in item && item.adminOnly) return profile?.role === 'admin'
+    return true
+  })
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-border bg-sidebar">
@@ -65,7 +48,9 @@ export function SidebarNav() {
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-semibold text-sidebar-foreground">Voice Agent</span>
-          <span className="text-xs text-muted-foreground">{agentConfig.clinicName}</span>
+          <span className="text-xs text-muted-foreground">
+            {profile?.role === 'super_admin' ? 'Super Admin' : agentConfig.clinicName}
+          </span>
         </div>
       </div>
 

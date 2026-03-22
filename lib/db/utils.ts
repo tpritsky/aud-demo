@@ -70,7 +70,15 @@ export function appPatientToDb(patient: Patient, userId: string): Omit<PatientRo
   }
 }
 
+function clampTier(n: number | null | undefined): 1 | 2 | 3 | 4 | null {
+  if (n == null || Number.isNaN(n)) return null
+  const v = Math.round(n)
+  if (v < 1 || v > 4) return null
+  return v as 1 | 2 | 3 | 4
+}
+
 export function dbCallToApp(row: CallRow): Call {
+  const aiStatus = row.ai_processing_status as Call['aiProcessingStatus'] | undefined
   return {
     id: row.id,
     timestamp: new Date(row.timestamp),
@@ -86,10 +94,20 @@ export function dbCallToApp(row: CallRow): Call {
     summary: row.summary as unknown as Call['summary'],
     transcript: row.transcript,
     entities: (row.entities as unknown as Call['entities']) || {},
+    clinicId: row.clinic_id ?? null,
+    aiProcessingStatus: aiStatus ?? 'pending',
+    aiBriefSummary: row.ai_brief_summary ?? null,
+    aiCallerName: row.ai_caller_name ?? null,
+    aiCallerPhone: row.ai_caller_phone ?? null,
+    aiResponseUrgency: clampTier(row.ai_response_urgency),
+    aiBusinessValue: clampTier(row.ai_business_value),
+    aiTags: row.ai_tags ?? [],
+    aiProcessedAt: row.ai_processed_at ? new Date(row.ai_processed_at) : null,
+    aiError: row.ai_error ?? null,
   }
 }
 
-export function appCallToDb(call: Call, userId: string): Omit<CallRow, 'created_at'> {
+export function appCallToDb(call: Call, userId: string, clinicId?: string | null): Omit<CallRow, 'created_at'> {
   return {
     id: call.id,
     timestamp: call.timestamp.toISOString(),
@@ -106,6 +124,16 @@ export function appCallToDb(call: Call, userId: string): Omit<CallRow, 'created_
     transcript: call.transcript,
     entities: call.entities as unknown as Record<string, unknown>,
     user_id: userId,
+    clinic_id: call.clinicId ?? clinicId ?? null,
+    ai_processing_status: call.aiProcessingStatus ?? 'pending',
+    ai_brief_summary: call.aiBriefSummary ?? null,
+    ai_caller_name: call.aiCallerName ?? null,
+    ai_caller_phone: call.aiCallerPhone ?? null,
+    ai_response_urgency: call.aiResponseUrgency ?? null,
+    ai_business_value: call.aiBusinessValue ?? null,
+    ai_tags: call.aiTags ?? [],
+    ai_processed_at: call.aiProcessedAt?.toISOString() ?? null,
+    ai_error: call.aiError ?? null,
   }
 }
 

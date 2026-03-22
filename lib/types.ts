@@ -9,8 +9,8 @@ export type VoiceStyle = 'calm' | 'neutral' | 'upbeat'
 /** Clinic vertical / business type for UX and config */
 export type ClinicVertical = 'audiology' | 'ortho' | 'law' | 'general'
 
-/** Profile role within a clinic */
-export type ProfileRole = 'admin' | 'member'
+/** Profile role: super_admin (platform), admin (business owner), member (worker) */
+export type ProfileRole = 'super_admin' | 'admin' | 'member'
 
 export interface CallEntities {
   name?: string
@@ -19,6 +19,8 @@ export interface CallEntities {
   deviceModel?: string
   issueType?: string
 }
+
+export type CallAiProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'skipped'
 
 export interface Call {
   id: string
@@ -39,6 +41,17 @@ export interface Call {
   }
   transcript: string
   entities: CallEntities
+  /** Owning user (legacy); clinic-wide listing uses clinicId + RLS */
+  clinicId?: string | null
+  aiProcessingStatus?: CallAiProcessingStatus
+  aiBriefSummary?: string | null
+  aiCallerName?: string | null
+  aiCallerPhone?: string | null
+  aiResponseUrgency?: 1 | 2 | 3 | 4 | null
+  aiBusinessValue?: 1 | 2 | 3 | 4 | null
+  aiTags?: string[]
+  aiProcessedAt?: Date | null
+  aiError?: string | null
 }
 
 export interface AdoptionSignals {

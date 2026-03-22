@@ -99,6 +99,16 @@ For "Forgot password" and **Team invite emails** to work, add your app URLs to S
 
 Set **NEXT_PUBLIC_APP_URL** in your deployment (e.g. Vercel) to your production URL so invite emails contain the correct link instead of localhost.
 
+### Invite email (hosted Supabase project)
+
+The app passes **user metadata** on invite: `full_name`, `clinic_name`, `invited_role`, `role_label` (so templates can greet the person and name the business). For **local** development, `supabase/templates/invite.html` is wired in `config.toml`. For **hosted** Supabase:
+
+1. Go to **Authentication** → **Email Templates** → **Invite user**.
+2. Set **Subject** (optional): use a static line like `You're invited — set up your account`, or try `You're invited to join {{ .Data.clinic_name }}` if your project supports variables in the subject.
+3. Paste the HTML from `supabase/templates/invite.html` into the **Body** (same Go template variables work in the dashboard).
+
+If `clinic_name` is missing in an old invite, the template still works if you use `{{ if .Data.clinic_name }}`—the API always sends `clinic_name` for new invites.
+
 ### Creating the first clinic and clinic admin
 
 Only pre-added users can sign in. To onboard a new clinic:

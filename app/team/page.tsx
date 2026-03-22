@@ -2,23 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { AppShell } from '@/components/layout/app-shell'
+import { InviteUserDialog } from '@/components/invite-user-dialog'
 import { useAppStore } from '@/lib/store'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Users, UserPlus, Mail } from 'lucide-react'
+import { Users, UserPlus, Mail, UserCheck } from 'lucide-react'
 
 interface Member {
   id: string
@@ -32,10 +25,9 @@ export default function TeamPage() {
   const { profile, isHydrated } = useAppStore()
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<'member' | 'admin'>('member')
-  const [inviteName, setInviteName] = useState('')
-  const [inviting, setInviting] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [addWorkerEmail, setAddWorkerEmail] = useState('')
+  const [addingWorker, setAddingWorker] = useState(false)
 
   useEffect(() => {
     if (!isHydrated) return
@@ -72,63 +64,67 @@ export default function TeamPage() {
     load()
   }, [profile?.clinicId, profile?.role])
 
-  const handleInvite = async (e: React.FormEvent) => {
+  const refreshMembers = async () => {
+    const clinicId = profile?.clinicId
+    if (!clinicId) return
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, role')
+      .eq('clinic_id', clinicId)
+      .order('email')
+    if (!error && data) setMembers(data as Member[])
+  }
+
+  const handleAddWorker = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inviteEmail.trim()) {
+    const email = addWorkerEmail.trim().toLowerCase()
+    if (!email) {
       toast.error('Enter an email address')
       return
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(inviteEmail)) {
+    if (!emailRegex.test(email)) {
       toast.error('Enter a valid email address')
       return
     }
-    setInviting(true)
+    setAddingWorker(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
       if (!token) {
         toast.error('Session expired. Please sign in again.')
-        setInviting(false)
+        setAddingWorker(false)
         return
       }
-      const res = await fetch('/api/invite', {
+      const res = await fetch('/api/team/add-worker', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          email: inviteEmail.trim().toLowerCase(),
-          full_name: inviteName.trim() || undefined,
-          role: inviteRole,
-        }),
+        body: JSON.stringify({ email }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        throw new Error(data.error || 'Invite failed')
+        toast.error(data.error || 'Could not add user. Check the email is correct and try again.')
+        setAddingWorker(false)
+        return
       }
-      toast.success('Invitation sent', {
-        description: `${inviteEmail} will receive an email to set their password and join your team.`,
-      })
-      setInviteEmail('')
-      setInviteName('')
-      setInviteRole('member')
-      if (data.userId) {
-        setMembers((prev) => [
-          ...prev,
-          {
-            id: data.userId,
-            email: inviteEmail.trim().toLowerCase(),
-            full_name: inviteName.trim() || null,
-            role: inviteRole,
-          },
-        ])
+      toast.success('Worker added to your team')
+      setAddWorkerEmail('')
+      const clinicId = profile?.clinicId
+      if (clinicId) {
+        const { data: refreshed } = await supabase
+          .from('profiles')
+          .select('id, email, full_name, role')
+          .eq('clinic_id', clinicId)
+          .order('email')
+        if (refreshed) setMembers(refreshed as Member[])
       }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send invite')
+    } catch {
+      toast.error('Could not add user. Check the email is correct and try again.')
     } finally {
-      setInviting(false)
+      setAddingWorker(false)
     }
   }
 
@@ -195,53 +191,56 @@ export default function TeamPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5" />
-              Invite member
+              <UserCheck className="h-5 w-5" />
+              Add existing user as worker
             </CardTitle>
             <CardDescription>
-              They will receive an email to set their password and join your clinic.
+              Type the exact email of a registered user. The match must be exact — no suggestions are shown to protect privacy.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleInvite} className="space-y-4">
+            <form onSubmit={handleAddWorker} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="invite-email">Email *</Label>
+                <Label htmlFor="add-worker-email">Email (exact match)</Label>
                 <Input
-                  id="invite-email"
+                  id="add-worker-email"
                   type="email"
-                  placeholder="colleague@company.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  required
+                  autoComplete="off"
+                  placeholder="user@example.com"
+                  value={addWorkerEmail}
+                  onChange={(e) => setAddWorkerEmail(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="invite-name">Name (optional)</Label>
-                <Input
-                  id="invite-name"
-                  placeholder="Full name"
-                  value={inviteName}
-                  onChange={(e) => setInviteName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as 'member' | 'admin')}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="member">Member</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="submit" disabled={inviting}>
-                {inviting ? 'Sending...' : 'Send invite'}
+              <Button type="submit" disabled={addingWorker}>
+                {addingWorker ? 'Adding...' : 'Add as worker'}
               </Button>
             </form>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" />
+              Invite new member
+            </CardTitle>
+            <CardDescription>
+              Send an invite link. They create their account there (email is fixed; they choose name and password). No account exists until they finish.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button type="button" onClick={() => setInviteOpen(true)} className="gap-2">
+              <Mail className="h-4 w-4" />
+              Invite by email…
+            </Button>
+          </CardContent>
+        </Card>
+
+        <InviteUserDialog
+          open={inviteOpen}
+          onOpenChange={setInviteOpen}
+          onInvited={refreshMembers}
+        />
           </>
         )}
       </div>

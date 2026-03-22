@@ -157,11 +157,11 @@ export default function LandingPage() {
             <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Pricing
             </a>
+            <Link href="/ortho" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              For Ortho
+            </Link>
           </nav>
           <div className="flex items-center gap-3">
-            <Button variant="ghost" asChild className="hidden sm:inline-flex">
-              <Link href="/get-started">Get started</Link>
-            </Button>
             <Button asChild size="default" className="shadow-lg">
               <Link href="/get-started">
                 Get started
@@ -198,6 +198,9 @@ export default function LandingPage() {
                 <Link href="/#features">Watch Demo</Link>
               </Button>
             </div>
+            <p className="mt-6 text-sm text-muted-foreground">
+              Also for <Link href="/ortho" className="text-primary underline hover:no-underline">orthopedic clinics</Link> — 24/7 patient capture.
+            </p>
           </div>
         </div>
         

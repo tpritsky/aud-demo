@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef, ReactNode } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback, ReactNode } from 'react'
 import {
   AppContext,
   AppStore,
@@ -24,6 +24,10 @@ import {
 import { triggerOutboundCall, CallDynamicVariables } from '@/lib/call-trigger'
 import { normalizePhoneNumber } from '@/lib/phone-format'
 import { supabase } from '@/lib/supabase/client'
+import {
+  clearLocalSupabaseSession,
+  isRefreshTokenAuthError,
+} from '@/lib/supabase/clear-stale-session'
 import * as dbPatients from '@/lib/db/patients'
 import * as dbCalls from '@/lib/db/calls'
 import * as dbSequences from '@/lib/db/sequences'
@@ -33,6 +37,7 @@ import * as dbActivityEvents from '@/lib/db/activity-events'
 import * as dbAgentConfig from '@/lib/db/agent-config'
 import * as dbUtils from '@/lib/db/utils'
 import { toast } from 'sonner'
+import { isLikelyAbortError } from '@/lib/utils'
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [calls, setCalls] = useState<Call[]>([])
@@ -45,22 +50,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [profile, setProfile] = useState<{ role: 'admin' | 'member'; clinicId: string | null } | null>(null)
-  
+  const [profile, setProfile] = useState<{ role: 'super_admin' | 'admin' | 'member'; clinicId: string | null } | null>(null)
+  const [sessionAccount, setSessionAccount] = useState<{
+    email: string
+    fullName: string | null
+    role: 'super_admin' | 'admin' | 'member'
+  } | null>(null)
+  const [viewAs, setViewAsState] = useState<{ userId: string; displayName: string } | null>(null)
+  const realProfileRef = useRef<{ role: 'super_admin' | 'admin' | 'member'; clinicId: string | null } | null>(null)
+
+  const setViewAs = useCallback((v: { userId: string; displayName: string } | null) => {
+    setViewAsState(v)
+  }, [])
+
   // Use ref to prevent concurrent executions of checkDueItems
   const isProcessingRef = useRef(false)
   const userIdRef = useRef<string | null>(null)
+
+  // Next.js / Turbopack / Link prefetch often abort in-flight fetch; avoid noisy runtime overlay.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (isLikelyAbortError(event.reason)) {
+        event.preventDefault()
+      }
+    }
+    window.addEventListener('unhandledrejection', onUnhandledRejection)
+    return () => window.removeEventListener('unhandledrejection', onUnhandledRejection)
+  }, [])
 
   // Check Supabase session on mount
   useEffect(() => {
     const checkSession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession()
-        
-        // Handle refresh token errors by signing out
-        if (error && (error.message?.includes('refresh_token') || error.message?.includes('Invalid Refresh Token'))) {
-          console.warn('Refresh token invalid, signing out:', error.message)
-          await supabase.auth.signOut()
+
+        if (error && isRefreshTokenAuthError(error)) {
+          console.warn('Session refresh failed; clearing local session:', error.message)
+          await clearLocalSupabaseSession()
           setIsLoggedIn(false)
           setIsHydrated(true)
           setIsLoading(false)
@@ -74,32 +101,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } else {
           setIsLoggedIn(false)
         }
-      } catch (error: any) {
-        console.error('Error checking session:', error)
-        // Handle refresh token errors
-        if (error?.message?.includes('refresh_token') || error?.message?.includes('Invalid Refresh Token')) {
-          console.warn('Refresh token invalid, signing out')
-          await supabase.auth.signOut()
+      } catch (error: unknown) {
+        if (isLikelyAbortError(error)) {
+          // Prefetch / navigation / Strict Mode — ignore
+        } else {
+          console.error('Error checking session:', error)
+          if (isRefreshTokenAuthError(error)) {
+            await clearLocalSupabaseSession()
+          }
+          setIsLoggedIn(false)
         }
-        setIsLoggedIn(false)
       } finally {
         setIsHydrated(true)
         setIsLoading(false)
       }
     }
 
-    checkSession()
+    void checkSession().catch((e: unknown) => {
+      if (!isLikelyAbortError(e)) console.error('checkSession:', e)
+    })
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         userIdRef.current = session.user.id
         setIsLoggedIn(true)
-        await loadInitialData(session.user.id)
+        try {
+          await loadInitialData(session.user.id)
+        } catch (e: unknown) {
+          if (!isLikelyAbortError(e)) console.error('loadInitialData after sign-in:', e)
+        }
       } else if (event === 'SIGNED_OUT') {
         userIdRef.current = null
         setIsLoggedIn(false)
         setProfile(null)
+        setSessionAccount(null)
         // Clear all data
         setCalls([])
         setPatients([])
@@ -126,8 +162,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // Load profile first (role, clinic_id) for Team and access control.
       // Prefer API route (service role) so we don't depend on RLS / client session.
-      let role: 'admin' | 'member' | null = null
+      let role: 'super_admin' | 'admin' | 'member' | null = null
       let clinicId: string | null = null
+      let sessionAcc: {
+        email: string
+        fullName: string | null
+        role: 'super_admin' | 'admin' | 'member'
+      } | null = null
+
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
       if (token) {
@@ -136,10 +178,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
             headers: { Authorization: `Bearer ${token}` },
           })
           if (res.ok) {
-            const data = await res.json()
-            if (data.role === 'admin' || data.role === 'member') {
+            const data = (await res.json()) as {
+              role?: string
+              clinicId?: string | null
+              email?: string | null
+              fullName?: string | null
+            }
+            if (data.role === 'super_admin' || data.role === 'admin' || data.role === 'member') {
               role = data.role
               clinicId = data.clinicId ?? null
+            }
+            if (
+              typeof data.email === 'string' &&
+              data.email &&
+              (data.role === 'super_admin' || data.role === 'admin' || data.role === 'member')
+            ) {
+              sessionAcc = {
+                email: data.email,
+                fullName: data.fullName ?? null,
+                role: data.role as 'super_admin' | 'admin' | 'member',
+              }
             }
           }
         } catch (_) {
@@ -149,14 +207,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (role === null) {
         const { data: profileRow, error: profileError } = await supabase
           .from('profiles')
-          .select('role, clinic_id')
+          .select('role, clinic_id, email, full_name')
           .eq('id', userId)
           .single()
         if (!profileError && profileRow) {
-          const r = profileRow as { role: string; clinic_id?: string | null }
-          if (r.role === 'admin' || r.role === 'member') {
-            role = r.role as 'admin' | 'member'
+          const r = profileRow as {
+            role: string
+            clinic_id?: string | null
+            email?: string
+            full_name?: string | null
+          }
+          if (r.role === 'super_admin' || r.role === 'admin' || r.role === 'member') {
+            role = r.role as 'super_admin' | 'admin' | 'member'
             clinicId = r.clinic_id ?? null
+            if (r.email) {
+              sessionAcc = {
+                email: r.email,
+                fullName: r.full_name ?? null,
+                role,
+              }
+            }
           }
         } else {
           if (profileError) {
@@ -164,26 +234,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           const { data: roleRow } = await supabase
             .from('profiles')
-            .select('role')
+            .select('role, email, full_name')
             .eq('id', userId)
             .single()
-          const r = roleRow as { role: string } | null
-          if (r && (r.role === 'admin' || r.role === 'member')) {
-            role = r.role as 'admin' | 'member'
+          const r = roleRow as {
+            role: string
+            email?: string
+            full_name?: string | null
+          } | null
+          if (r && (r.role === 'super_admin' || r.role === 'admin' || r.role === 'member')) {
+            role = r.role as 'super_admin' | 'admin' | 'member'
+            if (r.email) {
+              sessionAcc = {
+                email: r.email,
+                fullName: r.full_name ?? null,
+                role,
+              }
+            }
           }
         }
       }
+
+      if (role && !sessionAcc && session?.user?.email) {
+        const meta = session.user.user_metadata as { full_name?: string } | undefined
+        sessionAcc = {
+          email: session.user.email,
+          fullName: typeof meta?.full_name === 'string' ? meta.full_name : null,
+          role,
+        }
+      }
+
       if (role) {
-        setProfile({ role, clinicId })
+        const profileValue = { role, clinicId }
+        setProfile(profileValue)
+        realProfileRef.current = profileValue
+        setSessionAccount(sessionAcc)
       } else {
         setProfile(null)
+        realProfileRef.current = null
+        setSessionAccount(null)
       }
-      
+
       // Load critical data first (calls, patients) to show UI quickly
       // Then load less critical data in parallel
       const [patientsData, callsData] = await Promise.all([
         dbPatients.getPatients(supabase, userId).catch(() => []),
-        dbCalls.getCalls(supabase, userId, 100).catch(() => []),
+        dbCalls.listCallsForSession(supabase, 200).catch(() => []),
       ])
 
       // Set critical data immediately so UI can render
@@ -191,13 +287,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCalls(callsData)
       setIsLoading(false) // Allow UI to render while loading other data
 
-      // Load remaining data in background
-      const [sequencesData, tasksData, checkInsData, eventsData, configData] = await Promise.allSettled([
+      // Load remaining data in background (incl. clinic settings when user belongs to a clinic)
+      const clinicSettingsPromise =
+        clinicId
+          ? supabase
+              .from('clinics')
+              .select('settings')
+              .eq('id', clinicId)
+              .single()
+              .then(({ data }) => (data as { settings?: { agentConfig?: AgentConfig } } | null)?.settings)
+          : Promise.resolve(undefined)
+
+      const [sequencesData, tasksData, checkInsData, eventsData, configData, clinicSettingsData] = await Promise.allSettled([
         dbSequences.getSequences(supabase, userId).catch(() => []),
         dbCallbackTasks.getCallbackTasks(supabase, userId).catch(() => []),
         dbScheduledCheckIns.getScheduledCheckIns(supabase, userId).catch(() => []),
         dbActivityEvents.getActivityEvents(supabase, userId, 50).catch(() => []),
         dbAgentConfig.getAgentConfig(supabase, userId).catch(() => null),
+        clinicSettingsPromise,
       ])
 
       // Update state with remaining data
@@ -205,10 +312,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (tasksData.status === 'fulfilled') setCallbackTasks(tasksData.value)
       if (checkInsData.status === 'fulfilled') setScheduledCheckIns(checkInsData.value)
       if (eventsData.status === 'fulfilled') setActivityEvents(eventsData.value)
-      if (configData.status === 'fulfilled' && configData.value) {
+      // Prefer clinic-level agent config (set by super_admin) over user's agent_config
+      const clinicAgentConfig = clinicSettingsData.status === 'fulfilled' && clinicSettingsData.value?.agentConfig
+      if (clinicAgentConfig) {
+        setAgentConfig(clinicAgentConfig)
+      } else if (configData.status === 'fulfilled' && configData.value) {
         setAgentConfig(configData.value)
       }
-    } catch (error) {
+    } catch (error: unknown) {
+      if (isLikelyAbortError(error)) {
+        setIsLoading(false)
+        return
+      }
       console.error('Error loading initial data:', error)
       toast.error('Failed to load data', {
         description: 'Please refresh the page',
@@ -217,59 +332,93 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const loadInitialDataRef = useRef(loadInitialData)
+  loadInitialDataRef.current = loadInitialData
+
+  const clearViewAs = useCallback(async () => {
+    setViewAsState(null)
+    const uid = userIdRef.current
+    if (uid) {
+      await loadInitialDataRef.current(uid)
+    }
+  }, [])
+
   // Set up real-time subscriptions
   useEffect(() => {
     if (!userIdRef.current) return
 
     const userId = userIdRef.current
+    const clinicId = profile?.clinicId ?? null
 
-    // Subscribe to calls
-    const callsSubscription = supabase
-      .channel('calls-changes')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'calls',
-        filter: `user_id=eq.${userId}`,
-      }, (payload) => {
-        // Use the payload data directly instead of fetching from database to avoid lag
-        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          try {
-            // Convert the database row directly to avoid an extra database query
-            // The payload.new already contains all the call data from the database
-            const callRow = payload.new as any
-            const call = dbUtils.dbCallToApp(callRow)
-            
-            if (call) {
-              setCalls((prev) => {
-                const existing = prev.find(c => c.id === call.id)
-                if (existing) {
-                  // Only update if there are actual changes to avoid unnecessary re-renders
-                  // Compare key fields instead of full object to avoid false positives
-                  const hasChanges = 
-                    existing.timestamp.getTime() !== call.timestamp.getTime() ||
-                    existing.status !== call.status ||
-                    existing.outcome !== call.outcome ||
-                    existing.transcript !== call.transcript ||
-                    JSON.stringify(existing.summary) !== JSON.stringify(call.summary)
-                  
-                  if (hasChanges) {
-                    return prev.map(c => c.id === call.id ? call : c)
-                  }
-                  return prev
+    const handleCallPayload = (payload: {
+      eventType: string
+      new: Record<string, unknown>
+      old: { id?: string }
+    }) => {
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        try {
+          const callRow = payload.new as unknown as Parameters<typeof dbUtils.dbCallToApp>[0]
+          const call = dbUtils.dbCallToApp(callRow)
+
+          if (call) {
+            setCalls((prev) => {
+              const existing = prev.find((c) => c.id === call.id)
+              if (existing) {
+                const hasChanges =
+                  existing.timestamp.getTime() !== call.timestamp.getTime() ||
+                  existing.status !== call.status ||
+                  existing.outcome !== call.outcome ||
+                  existing.transcript !== call.transcript ||
+                  JSON.stringify(existing.summary) !== JSON.stringify(call.summary) ||
+                  existing.aiProcessingStatus !== call.aiProcessingStatus ||
+                  existing.aiBriefSummary !== call.aiBriefSummary ||
+                  existing.aiResponseUrgency !== call.aiResponseUrgency ||
+                  existing.aiBusinessValue !== call.aiBusinessValue ||
+                  JSON.stringify(existing.aiTags) !== JSON.stringify(call.aiTags)
+
+                if (hasChanges) {
+                  return prev.map((c) => (c.id === call.id ? call : c))
                 }
-                return [call, ...prev].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-              })
-            }
-          } catch (error) {
-            console.error('Error processing call update from real-time:', error)
-            // Silently fail - the call will be synced on next page load
+                return prev
+              }
+              return [call, ...prev].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+            })
           }
-        } else if (payload.eventType === 'DELETE') {
-          setCalls((prev) => prev.filter(c => c.id !== payload.old.id))
+        } catch (error) {
+          console.error('Error processing call update from real-time:', error)
         }
-      })
-      .subscribe()
+      } else if (payload.eventType === 'DELETE') {
+        setCalls((prev) => prev.filter((c) => c.id !== payload.old.id))
+      }
+    }
+
+    const callsChannel = supabase
+      .channel(`calls-changes-${userId}${clinicId ? `-${clinicId}` : ''}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'calls',
+          filter: `user_id=eq.${userId}`,
+        },
+        handleCallPayload
+      )
+
+    if (clinicId) {
+      callsChannel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'calls',
+          filter: `clinic_id=eq.${clinicId}`,
+        },
+        handleCallPayload
+      )
+    }
+
+    callsChannel.subscribe()
 
     // Subscribe to patients
     const patientsSubscription = supabase
@@ -410,14 +559,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .subscribe()
 
     return () => {
-      callsSubscription.unsubscribe()
+      void supabase.removeChannel(callsChannel)
       patientsSubscription.unsubscribe()
       sequencesSubscription.unsubscribe()
       tasksSubscription.unsubscribe()
       checkInsSubscription.unsubscribe()
       eventsSubscription.unsubscribe()
     }
-  }, [isLoggedIn])
+  }, [isLoggedIn, profile?.clinicId])
 
   // Normalize phone number for matching using the shared utility
   const normalizePhone = (phone: string): string => {
@@ -452,6 +601,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await supabase.auth.signOut()
       setIsLoggedIn(false)
       setProfile(null)
+      setSessionAccount(null)
       userIdRef.current = null
     }
     // Sign in is handled by login screen
@@ -529,6 +679,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       kpiData,
       isLoggedIn,
       profile,
+      sessionAccount,
+      viewAs,
+      setViewAs,
+      clearViewAs,
       setCalls,
       addCall: async (call: Call) => {
         if (!userIdRef.current) return
@@ -722,6 +876,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           console.error('Error adding activity event:', error)
         }
       },
+      setActivityEvents: (events: ActivityEvent[]) => {
+        setActivityEvents(events)
+      },
       setAgentConfig: async (config: AgentConfig) => {
         if (!userIdRef.current) return
         
@@ -741,7 +898,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProfile,
       isHydrated,
     }),
-    [calls, patients, sequences, callbackTasks, scheduledCheckIns, activityEvents, agentConfig, kpiData, isLoggedIn, profile, isHydrated, isLoading]
+    [calls, patients, sequences, callbackTasks, scheduledCheckIns, activityEvents, agentConfig, kpiData, isLoggedIn, profile, sessionAccount, isHydrated, isLoading, viewAs, setViewAs, clearViewAs]
   )
 
   // Poll for due tasks and check-ins every minute and trigger calls

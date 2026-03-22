@@ -1,7 +1,6 @@
 'use client'
 
 import React from 'react'
-import Link from 'next/link'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -156,31 +155,19 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                       Back to sign in
                     </button>
                   ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setIsForgotPassword(true)}
-                        className="text-sm text-muted-foreground hover:text-foreground underline block"
-                      >
-                        Forgot password?
-                      </button>
-                      <Link
-                        href="/request-access"
-                        className="text-sm text-muted-foreground hover:text-foreground underline block"
-                      >
-                        Not a member? Request access
-                      </Link>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => setIsForgotPassword(true)}
+                      className="text-sm text-muted-foreground hover:text-foreground underline block w-full"
+                    >
+                      Forgot password?
+                    </button>
                   )}
                 </div>
               </form>
               {loginError && (
                 <p className="mt-4 text-center text-sm text-muted-foreground">
-                  Not a member yet?{' '}
-                  <Link href="/request-access" className="underline hover:text-foreground">
-                    Request access
-                  </Link>
-                  . Part of a company? Ask your system administrator to add you to your enterprise account.
+                  Access is by invitation only. Ask your administrator to invite you if you need an account.
                 </p>
               )}
               {!loginError && !isForgotPassword && (

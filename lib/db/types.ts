@@ -107,6 +107,16 @@ export interface CallRow {
   entities: Record<string, unknown> | null
   created_at: string
   user_id: string
+  clinic_id?: string | null
+  ai_processing_status?: string
+  ai_brief_summary?: string | null
+  ai_caller_name?: string | null
+  ai_caller_phone?: string | null
+  ai_response_urgency?: number | null
+  ai_business_value?: number | null
+  ai_tags?: string[] | null
+  ai_processed_at?: string | null
+  ai_error?: string | null
 }
 
 export type CallInsert = Omit<CallRow, 'created_at'>
