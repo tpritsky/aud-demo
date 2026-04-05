@@ -8,6 +8,11 @@ import { Loader2 } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { ClinicSetupWizard } from '@/components/onboarding/clinic-setup-wizard'
 
+/** DevTools filter: Vocalis:get-started (or Vocalis: for both onboarding + this page) */
+function gsLog(event: string, payload?: Record<string, unknown>) {
+  console.log(`[Vocalis:get-started] ${event}`, { t: new Date().toISOString(), ...payload })
+}
+
 function GetStartedContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -15,22 +20,52 @@ function GetStartedContent() {
   const { isHydrated, isLoggedIn, profile, setProfile } = useAppStore()
 
   useEffect(() => {
+    gsLog('route_effect', {
+      isHydrated,
+      isLoggedIn,
+      setupClinicId,
+      profileRole: profile?.role ?? null,
+      clinicId: profile?.clinicId ?? null,
+      needsClinicOnboarding: profile?.needsClinicOnboarding ?? null,
+    })
     if (!isHydrated) return
     if (!isLoggedIn) {
       const q = searchParams.toString()
+      gsLog('redirect', { reason: 'not_logged_in', to: q ? `/dashboard?${q}` : '/dashboard' })
       router.replace(q ? `/dashboard?${q}` : '/dashboard')
       return
     }
     if (profile?.role === 'super_admin' && !setupClinicId) {
+      gsLog('redirect', { reason: 'super_admin_missing_clinicId', to: '/dashboard' })
       router.replace('/dashboard')
       return
     }
     if (profile?.role === 'super_admin' && setupClinicId) return
     if (profile && !profile.clinicId) return
     if (profile && !profile.needsClinicOnboarding) {
+      gsLog('redirect', { reason: 'onboarding_not_needed', to: '/dashboard' })
       router.replace('/dashboard')
     }
   }, [isHydrated, isLoggedIn, profile, router, setupClinicId, searchParams])
+
+  useEffect(() => {
+    const branch = !isHydrated
+      ? 'waiting_hydrate'
+      : !isLoggedIn
+        ? 'redirecting_unauthenticated'
+        : isLoggedIn && profile?.role === 'super_admin' && setupClinicId
+          ? 'wizard_super_admin'
+          : isLoggedIn && profile?.role === 'super_admin' && !setupClinicId
+            ? 'spinner_super_admin_no_clinic'
+            : isLoggedIn && profile?.clinicId && profile.needsClinicOnboarding
+              ? 'wizard_member_onboarding'
+              : isLoggedIn && profile && !profile.clinicId
+                ? 'no_clinic_linked'
+                : isLoggedIn
+                  ? 'spinner_logged_in_fallback'
+                  : 'fallback'
+    gsLog('ui_branch', { branch })
+  }, [isHydrated, isLoggedIn, profile, setupClinicId])
 
   if (!isHydrated) {
     return (

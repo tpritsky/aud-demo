@@ -33,6 +33,11 @@ const STEPS = [
   'Phone number',
 ] as const
 
+/** Filter DevTools console with: Vocalis:onboarding */
+function obLog(event: string, payload?: Record<string, unknown>) {
+  console.log(`[Vocalis:onboarding] ${event}`, { t: new Date().toISOString(), ...payload })
+}
+
 const VOICE_OPTIONS: { value: VoiceStyle; label: string }[] = [
   { value: 'calm', label: 'Calm (steady)' },
   { value: 'neutral', label: 'Neutral (balanced)' },
@@ -192,23 +197,79 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
   const authHeaders = useCallback(async () => {
     const {
       data: { session },
+      error,
     } = await supabase.auth.getSession()
     const token = session?.access_token
-    if (!token) throw new Error('Not signed in')
+    if (!token) {
+      obLog('auth_no_token', {
+        hasSession: !!session,
+        getSessionError: error?.message ?? null,
+      })
+      throw new Error('Not signed in')
+    }
     return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } as Record<string, string>
   }, [])
+
+  useEffect(() => {
+    obLog('wizard_mount', {
+      superAdminClinicId: superAdminClinicId?.trim() || null,
+      settingsUrl,
+      profileClinicId: profile?.clinicId ?? null,
+    })
+  }, [superAdminClinicId, settingsUrl, profile?.clinicId])
+
+  useEffect(() => {
+    obLog('step_change', {
+      step,
+      stepLabel: STEPS[step] ?? '?',
+      loadingSettings,
+      hasCallAi: !!callAi,
+      training,
+      saving,
+      voicesLoadState,
+      phonesLoadState,
+      recordAck,
+      nextWouldBeDisabled: step === 3 && !recordAck,
+    })
+  }, [
+    step,
+    loadingSettings,
+    callAi,
+    training,
+    saving,
+    voicesLoadState,
+    phonesLoadState,
+    recordAck,
+  ])
+
+  useEffect(() => {
+    if (loadingSettings || !callAi) {
+      obLog('wizard_loading_gate', { loadingSettings, hasCallAi: !!callAi })
+    }
+  }, [loadingSettings, callAi])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       setLoadingSettings(true)
+      obLog('settings_fetch_start', { settingsUrl })
       try {
         const headers = await authHeaders()
         const res = await fetch(settingsUrl, { headers })
         const data = await res.json()
+        obLog('settings_fetch_response', {
+          ok: res.ok,
+          status: res.status,
+          hasCallAi: !!(data && typeof data === 'object' && (data as { callAi?: unknown }).callAi),
+          onboardingCompleted:
+            data && typeof data === 'object'
+              ? (data as { onboardingCompleted?: boolean }).onboardingCompleted
+              : undefined,
+        })
         if (!res.ok) throw new Error(data.error || 'Failed to load')
         if (cancelled) return
         if (superAdminClinicId?.trim() && data.onboardingCompleted === true) {
+          obLog('settings_redirect_already_complete', { to: '/businesses' })
           setExitingAlreadyComplete(true)
           setLoadingSettings(false)
           router.replace('/businesses')
@@ -246,9 +307,17 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
           setGreeting(`You've reached ${data.clinicName}. How can I help you today?`)
         }
       } catch (e) {
-        if (!cancelled) toast.error(e instanceof Error ? e.message : 'Failed to load settings')
+        if (!cancelled) {
+          obLog('settings_fetch_error', {
+            message: e instanceof Error ? e.message : String(e),
+          })
+          toast.error(e instanceof Error ? e.message : 'Failed to load settings')
+        }
       } finally {
-        if (!cancelled) setLoadingSettings(false)
+        if (!cancelled) {
+          obLog('settings_fetch_finally', { cancelled })
+          setLoadingSettings(false)
+        }
       }
     })()
     return () => {
@@ -260,6 +329,7 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
     if (step !== 2) return
     let cancelled = false
     setVoicesLoadState('loading')
+    obLog('voices_fetch_start', { retryKey: voiceListRetryKey })
     ;(async () => {
       try {
         const headers = await authHeaders()
@@ -286,8 +356,13 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
               : []
         )
         setVoicesLoadState('done')
+        obLog('voices_load_done', {
+          groupCount: normalized.length,
+          totalVoices: normalized.reduce((n, g) => n + g.voices.length, 0),
+        })
       } catch (e) {
         if (!cancelled) {
+          obLog('voices_load_error', { message: e instanceof Error ? e.message : String(e) })
           setVoicesLoadState('error')
           toast.error(e instanceof Error ? e.message : 'Failed to load voices')
         }
@@ -302,6 +377,7 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
     if (step !== 4) return
     let cancelled = false
     setPhonesLoadState('loading')
+    obLog('phones_fetch_start', { retryKey: phoneListRetryKey, poolClinic: superAdminClinicId?.trim() || profile?.clinicId?.trim() || null })
     ;(async () => {
       try {
         const headers = await authHeaders()
@@ -316,6 +392,7 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
           : []
         setElPhoneNumbers(list)
         setPhonesLoadState('done')
+        obLog('phones_load_done', { count: list.length })
         setSelectedElPhoneNumberId((prev) => {
           const p = prev.trim()
           if (p && list.some((row) => row.phoneNumberId === p)) return p
@@ -324,6 +401,7 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
         })
       } catch (e) {
         if (!cancelled) {
+          obLog('phones_load_error', { message: e instanceof Error ? e.message : String(e) })
           setPhonesLoadState('error')
           setElPhoneNumbers([])
           toast.error(e instanceof Error ? e.message : 'Failed to load phone numbers')
@@ -479,10 +557,17 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
 
   const runTrain = async () => {
     if (!homepageUrl.trim()) {
+      obLog('train_blocked', { reason: 'empty_homepage_url' })
       toast.error('Enter your homepage URL')
       return
     }
     setTraining(true)
+    obLog('train_start', {
+      homepageUrlLen: homepageUrl.trim().length,
+      analyzePath: superAdminClinicId?.trim()
+        ? '/api/super-admin/analyze-business-url'
+        : '/api/clinic/analyze-website',
+    })
     try {
       const headers = await authHeaders()
       const analyzeUrl = superAdminClinicId?.trim()
@@ -494,6 +579,7 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
         body: JSON.stringify({ url: homepageUrl.trim() }),
       })
       const data = await res.json()
+      obLog('train_response', { ok: res.ok, status: res.status })
       if (!res.ok) throw new Error(data.error || 'Analysis failed')
       const rawKi = Array.isArray(data.knowledgeItems) ? data.knowledgeItems : []
       const pairs: { title: string; body: string }[] = []
@@ -513,8 +599,10 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
         setBusinessDescription(data.description.trim().slice(0, KNOWLEDGE_ITEM_BODY_MAX_CHARS))
       }
       toast.success('Website analyzed')
+      obLog('train_success_advance', { pairsCount: pairs.length, nextStep: 1 })
       setStep(1)
     } catch (e) {
+      obLog('train_error', { message: e instanceof Error ? e.message : String(e) })
       toast.error(e instanceof Error ? e.message : 'Train failed')
     } finally {
       setTraining(false)
@@ -522,8 +610,16 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
   }
 
   const finish = async () => {
-    if (!callAi) return
+    if (!callAi) {
+      obLog('finish_blocked', { reason: 'callAi_null' })
+      return
+    }
     setSaving(true)
+    obLog('finish_start', {
+      selectedVoiceId: selectedElevenLabsVoiceId.trim() || null,
+      selectedPhoneId: selectedElPhoneNumberId.trim() || null,
+      businessNameLen: businessName.trim().length,
+    })
     try {
       const headers = await authHeaders()
       const nextCallAi: ClinicCallAiSettings = {
@@ -563,6 +659,7 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
         body: JSON.stringify(body),
       })
       const data = await res.json()
+      obLog('finish_response', { ok: res.ok, status: res.status })
       if (!res.ok) throw new Error(data.error || 'Save failed')
       if (data.agentConfig) {
         setAgentConfig(data.agentConfig)
@@ -584,7 +681,9 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
           toast.warning(`Voice agent provisioning issue: ${elp.error.trim().slice(0, 240)}`)
         }
       }
+      obLog('finish_success', { celebrate: true })
     } catch (e) {
+      obLog('finish_error', { message: e instanceof Error ? e.message : String(e) })
       toast.error(e instanceof Error ? e.message : 'Save failed')
     } finally {
       setSaving(false)
@@ -669,7 +768,14 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
                 <button
                   key={label}
                   type="button"
-                  onClick={() => reachable && setStep(i)}
+                  onClick={() => {
+                    if (!reachable) {
+                      obLog('step_tab_blocked', { targetIndex: i, currentStep: step })
+                      return
+                    }
+                    obLog('step_tab_click', { from: step, to: i })
+                    setStep(i)
+                  }}
                   disabled={!reachable}
                   className={cn(
                     'min-w-0 flex-1 rounded-xl px-1 pb-1 pt-0.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2',
@@ -982,7 +1088,10 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
             variant="outline"
             className="gap-2 rounded-xl border-zinc-200 px-5 py-6 text-base font-bold"
             disabled={step === 0 || saving}
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
+            onClick={() => {
+              obLog('back_click', { from: step, to: Math.max(0, step - 1) })
+              setStep((s) => Math.max(0, s - 1))
+            }}
           >
             <ChevronLeft className="h-5 w-5" />
             Back
@@ -993,7 +1102,10 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
                 type="button"
                 variant="ghost"
                 className="rounded-xl px-4 py-6 text-base font-bold"
-                onClick={() => setStep(1)}
+                onClick={() => {
+                  obLog('skip_train_click', { fromStep: 0, toStep: 1 })
+                  setStep(1)
+                }}
                 disabled={training}
               >
                 Skip
@@ -1002,7 +1114,14 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
                 type="button"
                 className="gap-2 rounded-xl bg-emerald-600 px-7 py-6 text-base font-bold hover:bg-emerald-700"
                 disabled={training}
-                onClick={() => void runTrain()}
+                onClick={() => {
+                  if (training) {
+                    obLog('train_click_ignored', { training: true })
+                    return
+                  }
+                  obLog('train_click', { hasUrl: !!homepageUrl.trim() })
+                  void runTrain()
+                }}
               >
                 {training ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
                 Train agent
@@ -1014,7 +1133,15 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
               type="button"
               className="gap-2 rounded-xl bg-emerald-600 px-7 py-6 text-base font-bold hover:bg-emerald-700"
               disabled={(step === 3 && !recordAck) || saving}
-              onClick={() => setStep((s) => s + 1)}
+              onClick={() => {
+                const blocked = (step === 3 && !recordAck) || saving
+                if (blocked) {
+                  obLog('next_blocked', { step, recordAck, saving, reason: step === 3 && !recordAck ? 'need_record_ack' : 'saving' })
+                  return
+                }
+                obLog('next_click', { from: step, to: step + 1 })
+                setStep((s) => s + 1)
+              }}
             >
               Next
               <ChevronRight className="h-5 w-5" />
@@ -1025,7 +1152,14 @@ export function ClinicSetupWizard({ onDone, superAdminClinicId = null }: Props) 
               type="button"
               className="gap-2 rounded-xl bg-emerald-600 px-7 py-6 text-base font-bold hover:bg-emerald-700"
               disabled={saving}
-              onClick={() => void finish()}
+              onClick={() => {
+                if (saving) {
+                  obLog('finish_click_ignored', { saving: true })
+                  return
+                }
+                obLog('finish_click', { step: 4 })
+                void finish()
+              }}
             >
               {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
               Finish
