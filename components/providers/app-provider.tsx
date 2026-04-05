@@ -123,7 +123,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /** Last-resort unlock if anything above fails to flip `isHydrated` (Strict Mode + async race, throttled timers, etc.). */
   useEffect(() => {
-    const ABSOLUTE_MAX_MS = 32_000
+    /** Must exceed primary + retry `getSession` races below (slow networks / token refresh). */
+    const ABSOLUTE_MAX_MS = 72_000
     const t = window.setTimeout(() => {
       if (!isHydratedRef.current) {
         console.warn(
@@ -144,7 +145,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
      * `finishBootstrap` must not consult an effect `cancelled` flag: Strict Mode runs cleanup before the
      * first async `checkSession` completes, which would skip `setIsHydrated(true)` and trap the UI on "Loading…".
      */
-    const GET_SESSION_TIMEOUT_MS = 28_000
+    /** First attempt; token refresh on slow networks can exceed shorter limits. */
+    const GET_SESSION_TIMEOUT_MS = 42_000
+    const GET_SESSION_RETRY_MS = 22_000
 
     const finishBootstrap = () => {
       if (bootstrapFinished) return
@@ -153,20 +156,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsLoading(false)
     }
 
+    const raceGetSession = (ms: number) =>
+      Promise.race([
+        supabase.auth.getSession().then((result) => ({ kind: 'ok' as const, result })),
+        new Promise<{ kind: 'timeout' }>((resolve) => setTimeout(() => resolve({ kind: 'timeout' }), ms)),
+      ])
+
     const checkSession = async () => {
       try {
-        const sessionOutcome = await Promise.race([
-          supabase.auth.getSession().then((result) => ({ kind: 'ok' as const, result })),
-          new Promise<{ kind: 'timeout' }>((resolve) =>
-            setTimeout(() => resolve({ kind: 'timeout' }), GET_SESSION_TIMEOUT_MS),
-          ),
-        ])
+        if (!hasRealSupabaseConfig()) {
+          setIsLoggedIn(false)
+          return
+        }
+
+        let sessionOutcome = await raceGetSession(GET_SESSION_TIMEOUT_MS)
+        if (sessionOutcome.kind === 'timeout') {
+          sessionOutcome = await raceGetSession(GET_SESSION_RETRY_MS)
+        }
 
         if (sessionOutcome.kind === 'timeout') {
-          // Rare: stalled storage, extension, or network. Unblock UI as signed-out; onAuthStateChange may still recover.
-          console.info(
-            '[Vocalis] Session check exceeded time limit — showing signed-out state. Refresh or clear site data if you should be signed in.',
-          )
           setIsLoggedIn(false)
           return
         }
