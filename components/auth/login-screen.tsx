@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Headphones } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { SUPPORT_EMAIL, supportMailto } from '@/lib/support'
+import { supportMailto } from '@/lib/support'
 
 interface LoginScreenProps {
   onLogin: () => void
@@ -85,16 +85,11 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             <Headphones className="h-7 w-7 text-primary-foreground" />
           </div>
           <CardTitle className="text-2xl">Sign in</CardTitle>
-          <CardDescription className="text-pretty">
-            {isForgotPassword ? (
-              "Enter your email and we'll send you a reset link"
-            ) : (
-              <>
-                Access is invitation-only. If your organization uses Vocalis, sign in with the email and password from
-                your administrator. If not, contact us with the button below.
-              </>
-            )}
-          </CardDescription>
+          {isForgotPassword ? (
+            <CardDescription className="text-pretty">
+              Enter your email and we&apos;ll send you a reset link
+            </CardDescription>
+          ) : null}
         </CardHeader>
         <CardContent>
           {resetSent ? (
@@ -177,16 +172,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                     className="mt-4 rounded-lg border border-border bg-card px-3 py-2.5 text-center text-xs leading-relaxed text-muted-foreground"
                     role="note"
                   >
-                    Vocalis is currently invite-only—there is no public signup.
-                  </p>
-                  <p className="mt-3 text-center text-xs leading-relaxed text-muted-foreground">
-                    For help and inquiries:{' '}
-                    <a
-                      href={supportMailto()}
-                      className="font-medium text-foreground underline decoration-border underline-offset-2 hover:text-primary"
-                    >
-                      {SUPPORT_EMAIL}
-                    </a>
+                    Vocalis is currently invite-only—contact us for inquiries.
                   </p>
                   <Button variant="outline" className="mt-4 w-full rounded-xl" asChild>
                     <a href={supportMailto('Vocalis inquiry')}>Contact us</a>
