@@ -565,7 +565,7 @@ export function AudiologyLanding() {
               <a href={supportMailto('Vocalis inquiry')}>Contact us</a>
             </Button>
             <Button asChild size="lg" className="h-10 rounded-full px-5 font-semibold shadow-md shadow-primary/15">
-              <Link href="/dashboard">
+              <Link href="/login">
                 Sign in
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -599,7 +599,7 @@ export function AudiologyLanding() {
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
             <Button asChild size="lg" className="h-12 rounded-full px-8 text-base font-semibold shadow-md shadow-primary/20">
-              <Link href="/dashboard">
+              <Link href="/login">
                 Sign in
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -1005,7 +1005,7 @@ export function AudiologyLanding() {
               <h3 className="mb-4 text-sm font-semibold text-foreground">Access</h3>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <Link href="/dashboard" className="transition-colors hover:text-primary">
+                  <Link href="/login" className="transition-colors hover:text-primary">
                     Sign in
                   </Link>
                 </li>

@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { AudiologyLanding } from '@/components/marketing/audiology-landing'
-import { supabase } from '@/lib/supabase/client'
 
 export function HomePageClient() {
   const router = useRouter()
@@ -14,7 +13,7 @@ export function HomePageClient() {
   useEffect(() => {
     let cancelled = false
 
-    async function run() {
+    function run() {
       if (typeof window === 'undefined') return
       const hash = window.location.hash
       const search = window.location.search
@@ -48,17 +47,9 @@ export function HomePageClient() {
         return
       }
 
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
-        if (cancelled) return
-        if (session) {
-          router.replace('/dashboard')
-        }
-      } catch {
-        // Stay on marketing site; do not block the page on session
-      }
+      // Do not auto-redirect when a session cookie exists. Stale or partial sessions used to send users straight to
+      // /dashboard and trap them in an empty “Your clinic” shell with no password screen. “Sign in” uses /login
+      // to clear cookies first, then /dashboard shows the real login form.
     }
 
     void run()
@@ -80,14 +71,14 @@ export function HomePageClient() {
             </p>
             <div className="flex items-center gap-2 shrink-0">
               <Button variant="outline" size="sm" asChild>
-                <Link href="/dashboard">Sign in</Link>
+                <Link href="/login">Sign in</Link>
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   setAuthError(null)
-                  router.replace('/dashboard')
+                  router.replace('/')
                 }}
               >
                 Dismiss

@@ -133,7 +133,7 @@ function AcceptInviteContent() {
           This invite link is invalid or has expired. Ask your admin to send a new one, or sign in if you already have an account.
         </p>
         <Button asChild variant="outline">
-          <Link href="/dashboard">Back to sign in</Link>
+          <Link href="/login">Back to sign in</Link>
         </Button>
       </div>
     )
@@ -223,7 +223,7 @@ function AcceptInviteContent() {
               )}
             </Button>
             <div className="text-center">
-              <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground underline">
+              <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground underline">
                 Already have an account? Sign in
               </Link>
             </div>

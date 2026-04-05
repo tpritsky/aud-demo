@@ -86,7 +86,7 @@ export default function OrthoLandingPage() {
               asChild
               className="h-9 gap-1.5 px-3 text-sm shadow-lg sm:h-10 sm:px-4 sm:text-base sm:gap-2"
             >
-              <Link href="/dashboard">
+              <Link href="/login">
                 <span>Sign in</span>
                 <ArrowRight className="h-4 w-4 sm:ml-0.5" />
               </Link>
@@ -111,7 +111,7 @@ export default function OrthoLandingPage() {
                 <Link href="#demo">Request a demo</Link>
               </Button>
               <Button size="lg" variant="outline" asChild>
-                <Link href="/dashboard">Sign in</Link>
+                <Link href="/login">Sign in</Link>
               </Button>
             </div>
           </div>
@@ -492,7 +492,7 @@ export default function OrthoLandingPage() {
               </Button>
             </form>
             <p className="mt-6 text-center text-sm text-muted-foreground">
-              Or <Link href="/dashboard" className="text-primary underline">sign in</Link> now.
+              Or <Link href="/login" className="text-primary underline">sign in</Link> now.
             </p>
           </div>
         </div>
@@ -500,12 +500,12 @@ export default function OrthoLandingPage() {
 
       <footer className="border-t py-8">
         <div className="container mx-auto px-4 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
+          <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground">
             ← Sign in
           </Link>
           <div className="flex items-center gap-6">
             <Link href="/ortho" className="text-sm text-muted-foreground hover:text-foreground">For Ortho</Link>
-            <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">Sign in</Link>
+            <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground">Sign in</Link>
           </div>
         </div>
       </footer>

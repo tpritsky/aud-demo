@@ -147,7 +147,7 @@ export default function ResetPasswordPage() {
         <p className="text-muted-foreground text-center max-w-sm">
           This is taking too long. The link may have expired or there may be a connection issue.
         </p>
-        <Link href="/dashboard">
+        <Link href="/login">
           <Button variant="outline">Back to sign in</Button>
         </Link>
         <p className="text-sm text-muted-foreground">
@@ -217,7 +217,7 @@ export default function ResetPasswordPage() {
             </Button>
             <div className="text-center">
               <Link
-                href="/dashboard"
+                href="/login"
                 className="text-sm text-muted-foreground hover:text-foreground underline"
               >
                 Back to sign in
