@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef, useCallback, ReactNode } from 'react'
+import { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback, ReactNode } from 'react'
 import {
   AppContext,
   AppStore,
@@ -58,8 +58,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const isHydratedRef = useRef(false)
-  isHydratedRef.current = isHydrated
   const [profile, setProfileState] = useState<ProfileSnapshot | null>(null)
 
   const setProfile = useCallback(
@@ -121,45 +119,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('unhandledrejection', onUnhandledRejection)
   }, [])
 
-  /** Last-resort unlock if anything above fails to flip `isHydrated` (Strict Mode + async race, throttled timers, etc.). */
-  useEffect(() => {
-    /** Slightly longer than all `getSession` races + local clear below. */
-    const ABSOLUTE_MAX_MS = 22_000
-    const t = window.setTimeout(() => {
-      if (!isHydratedRef.current) {
-        console.warn(
-          '[Vocalis] Auth UI still locked after deadline — forcing hydrate. If you are signed in but see the login screen, refresh once.',
-        )
-        setIsHydrated(true)
-        setIsLoading(false)
-      }
-    }, ABSOLUTE_MAX_MS)
-    return () => window.clearTimeout(t)
+  /**
+   * Unlock the shell before any async auth work. `getSession()` can stall indefinitely after deploy / bad
+   * client state; gating `isHydrated` on it caused a permanent “Loading…” with no relation to “wait longer”.
+   */
+  useLayoutEffect(() => {
+    setIsHydrated(true)
+    setIsLoading(false)
   }, [])
 
-  // Check Supabase session on mount
+  // Check Supabase session on mount (background; does not control isHydrated)
   useEffect(() => {
-    let bootstrapFinished = false
-    /**
-     * Short races + clear stale browser auth (typical after deploy / cache skew). Not meant to wait on slow networks.
-     * `finishBootstrap` must not consult an effect `cancelled` flag (Strict Mode loading trap).
-     */
-    const SESSION_RACE_MS = 6_000
-    const SESSION_RETRY_MS = 5_000
-
-    const finishBootstrap = () => {
-      if (bootstrapFinished) return
-      bootstrapFinished = true
-      setIsHydrated(true)
-      setIsLoading(false)
-    }
-
-    const raceGetSession = (ms: number) =>
-      Promise.race([
-        supabase.auth.getSession().then((result) => ({ kind: 'ok' as const, result })),
-        new Promise<{ kind: 'timeout' }>((resolve) => setTimeout(() => resolve({ kind: 'timeout' }), ms)),
-      ])
-
     const checkSession = async () => {
       try {
         if (!hasRealSupabaseConfig()) {
@@ -167,21 +137,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        let sessionOutcome = await raceGetSession(SESSION_RACE_MS)
-        if (sessionOutcome.kind === 'timeout') {
-          sessionOutcome = await raceGetSession(SESSION_RETRY_MS)
-        }
-        if (sessionOutcome.kind === 'timeout') {
-          await clearLocalSupabaseSession()
-          sessionOutcome = await raceGetSession(SESSION_RETRY_MS)
-        }
-
-        if (sessionOutcome.kind === 'timeout') {
-          setIsLoggedIn(false)
-          return
-        }
-
-        const { data: { session }, error } = sessionOutcome.result
+        const { data: { session }, error } = await supabase.auth.getSession()
 
         if (error && isRefreshTokenAuthError(error)) {
           console.warn('Session refresh failed; clearing local session:', error.message)
@@ -193,8 +149,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           userIdRef.current = session.user.id
           setIsLoggedIn(true)
-          // Do not await: loadInitialData can hang on slow/stuck API or network; that would block
-          // `finally` and leave isHydrated false → perpetual full-page "Loading..." in AppShell.
           void loadInitialData(session.user.id).catch((e: unknown) => {
             if (!isLikelyAbortError(e)) console.error('loadInitialData (bootstrap):', e)
           })
@@ -211,14 +165,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           setIsLoggedIn(false)
         }
-      } finally {
-        finishBootstrap()
       }
     }
 
     void checkSession().catch((e: unknown) => {
       if (!isLikelyAbortError(e)) console.error('checkSession:', e)
-      finishBootstrap()
     })
 
     // Listen for auth changes

@@ -6,6 +6,10 @@ import { AppProvider } from "@/components/providers/app-provider";
 import { ClinicOnboardingGate } from "@/components/onboarding/clinic-onboarding-gate";
 import { Toaster } from "@/components/ui/sonner";
 
+/** Avoid CDN / browser serving stale HTML that references old `_next/static` chunks after deploy. */
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
