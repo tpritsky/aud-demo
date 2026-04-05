@@ -19,6 +19,7 @@ import {
   PhoneIncoming,
   ChevronDown,
   ChevronUp,
+  Headphones,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SUPPORT_EMAIL, supportMailto } from '@/lib/support'
@@ -296,8 +297,8 @@ export function AudiologyLanding() {
       <header className="sticky top-0 z-50 border-b border-border/60 bg-background/90 shadow-sm backdrop-blur-xl supports-[backdrop-filter]:bg-background/75">
         <div className="container mx-auto flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
           <Link href="/" className="flex min-w-0 items-center gap-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-              <Mic className="h-4 w-4" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+              <Headphones className="h-4 w-4" />
             </div>
             <span className="truncate text-lg font-bold tracking-tight">Vocalis</span>
           </Link>
