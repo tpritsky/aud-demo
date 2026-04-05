@@ -26,7 +26,7 @@ export function buildManagedPromptBlock(vertical: ClinicVertical, callAi: Clinic
     knowledge.trim() || '(Add knowledge cards in the app — hours, services, policies.)',
     '',
     '## Canned text messages (SMS)',
-    textTemplates.trim() || '(Optional — add templates under Send texts in the app.)',
+    textTemplates.trim() || '(Optional — add templates under Text & email in the app.)',
     '',
     '## How callers should be handled',
     flow,

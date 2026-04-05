@@ -31,7 +31,7 @@ export const AGENT_SUBNAV_LABELS: Record<AgentWorkspaceKey, string> = {
   knowledge: 'Knowledge',
   questions: 'Ask questions',
   transfer: 'Transfer calls',
-  texts: 'Send texts',
+  texts: 'Text & email',
   scheduling: 'Scheduling',
   notifications: 'Notifications',
   extras: 'Extra notes',

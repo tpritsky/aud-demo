@@ -26,3 +26,18 @@ export function isLikelyAbortError(e: unknown): boolean {
   if (e instanceof Error && e.name === 'AbortError') return true
   return false
 }
+
+/** Fetch that aborts after `ms` so a stuck API cannot block auth hydration forever. */
+export function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  ms = 25_000
+): Promise<Response> {
+  const ac = new AbortController()
+  const t = setTimeout(() => ac.abort(), ms)
+  const { signal: userSignal, ...rest } = init
+  if (userSignal) {
+    userSignal.addEventListener('abort', () => ac.abort(), { once: true })
+  }
+  return fetch(input, { ...rest, signal: ac.signal }).finally(() => clearTimeout(t))
+}

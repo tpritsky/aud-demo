@@ -38,7 +38,7 @@ import * as dbActivityEvents from '@/lib/db/activity-events'
 import * as dbAgentConfig from '@/lib/db/agent-config'
 import * as dbUtils from '@/lib/db/utils'
 import { toast } from 'sonner'
-import { isLikelyAbortError } from '@/lib/utils'
+import { fetchWithTimeout, isLikelyAbortError } from '@/lib/utils'
 import { clinicOnboardingIncomplete } from '@/lib/clinic-call-ai'
 
 type ProfileSnapshot = {
@@ -137,7 +137,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           userIdRef.current = session.user.id
           setIsLoggedIn(true)
-          await loadInitialData(session.user.id)
+          // Do not await: loadInitialData can hang on slow/stuck API or network; that would block
+          // `finally` and leave isHydrated false → perpetual full-page "Loading..." in AppShell.
+          void loadInitialData(session.user.id).catch((e: unknown) => {
+            if (!isLikelyAbortError(e)) console.error('loadInitialData (bootstrap):', e)
+          })
         } else {
           setIsLoggedIn(false)
         }
@@ -215,7 +219,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const token = session?.access_token
       if (token) {
         try {
-          const res = await fetch('/api/profile', {
+          const res = await fetchWithTimeout('/api/profile', {
             headers: { Authorization: `Bearer ${token}` },
           })
           if (res.ok) {
@@ -351,7 +355,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Prefer GET /api/clinic/settings so server can heal display phone + outbound agent id from the ConvAI line.
       const clinicSettingsPromise =
         clinicId && token
-          ? fetch('/api/clinic/settings', { headers: { Authorization: `Bearer ${token}` } })
+          ? fetchWithTimeout('/api/clinic/settings', { headers: { Authorization: `Bearer ${token}` } })
               .then(async (res) => {
                 if (!res.ok) return null
                 const j = (await res.json()) as { agentConfig?: AgentConfig | null }
@@ -415,7 +419,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } = await supabase.auth.getSession()
       const token = session?.access_token
       if (!token) return
-      const res = await fetch('/api/profile', { headers: { Authorization: `Bearer ${token}` } })
+      const res = await fetchWithTimeout('/api/profile', { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) return
       const data = (await res.json()) as {
         role?: string

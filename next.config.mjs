@@ -1,12 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* Crawlers and iOS often request these paths; Next serves /icon and /apple-icon from app/*.tsx */
-  async redirects() {
+  /**
+   * Rewrites (not redirects) so /favicon.ico returns 200 with icon bytes — many crawlers prefer that over 301.
+   * Next serves /icon and /apple-icon from app/*.tsx
+   */
+  async rewrites() {
     return [
-      { source: '/favicon.ico', destination: '/icon', permanent: true },
-      { source: '/apple-touch-icon.png', destination: '/apple-icon', permanent: true },
+      { source: '/favicon.ico', destination: '/icon' },
+      { source: '/apple-touch-icon.png', destination: '/apple-icon' },
     ]
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig

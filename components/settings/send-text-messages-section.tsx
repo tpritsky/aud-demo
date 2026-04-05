@@ -28,7 +28,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import type { ClinicCallAiSettings, VoiceTextMessageKind, VoiceTextMessageTemplate } from '@/lib/types'
+import type {
+  ClinicCallAiSettings,
+  VoiceTextDeliveryChannels,
+  VoiceTextMessageKind,
+  VoiceTextMessageTemplate,
+} from '@/lib/types'
 import { TEXT_STYLE_OPTIONS } from '@/lib/voice-call-flow'
 import {
   ChevronDown,
@@ -46,6 +51,7 @@ import { supabase } from '@/lib/supabase/client'
 
 type Draft = {
   kind: VoiceTextMessageKind
+  deliveryChannels: VoiceTextDeliveryChannels
   label: string
   message: string
   instructions: string
@@ -64,12 +70,14 @@ const emptyDraft = (kind: VoiceTextMessageKind): Draft =>
   kind === 'scheduling_link'
     ? {
         kind: 'scheduling_link',
+        deliveryChannels: 'sms',
         label: 'Scheduling link',
         message: 'To schedule your appointment visit [add your scheduling link here]',
         instructions: 'Send this message if a caller is interested in scheduling an appointment',
       }
     : {
         kind: 'sms',
+        deliveryChannels: 'sms',
         label: '',
         message: '',
         instructions: '',
@@ -117,6 +125,7 @@ export function SendTextMessagesSection({
     setEditingId(t.id)
     setDraft({
       kind: t.kind,
+      deliveryChannels: t.deliveryChannels ?? 'sms',
       label: t.label,
       message: t.message,
       instructions: t.instructions,
@@ -146,6 +155,7 @@ export function SendTextMessagesSection({
       message: draft.message.trim(),
       instructions: draft.instructions.trim(),
       enabled: true,
+      deliveryChannels: draft.deliveryChannels,
     }
     if (dialogMode === 'edit' && editingId) {
       const prev = templates.find((x) => x.id === editingId)
@@ -212,7 +222,7 @@ export function SendTextMessagesSection({
       }
       if (testChannel === 'email') {
         toast.success('Email sent', {
-          description: 'Check the inbox (and spam). Uses RESEND_API_KEY and RESEND_FROM_EMAIL.',
+          description: 'Check the inbox (and spam folder).',
           duration: 6000,
         })
       } else {
@@ -243,7 +253,7 @@ export function SendTextMessagesSection({
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
                   <Plus className="h-4 w-4" strokeWidth={2.5} />
                 </span>
-                Add text message
+                Add message
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-[min(100vw-2rem,16rem)] rounded-xl p-1.5 shadow-lg">
@@ -252,7 +262,7 @@ export function SendTextMessagesSection({
                 onSelect={() => openAdd('sms')}
               >
                 <MessageSquare className="h-4 w-4 shrink-0" />
-                Send SMS
+                Custom message
               </DropdownMenuItem>
               <DropdownMenuItem className="gap-2 rounded-lg cursor-pointer" onSelect={() => openAdd('scheduling_link')}>
                 <Calendar className="h-4 w-4 shrink-0" />
@@ -265,8 +275,8 @@ export function SendTextMessagesSection({
         <div className="divide-y divide-border">
           {templates.length === 0 ? (
             <p className="px-4 py-8 sm:px-5 text-sm text-muted-foreground text-center">
-              No text messages yet. Use <span className="font-medium text-foreground">Add text message</span> to create
-              SMS your receptionist can send to callers.
+              No messages yet. Use <span className="font-medium text-foreground">Add message</span> to create texts or
+              emails your receptionist can send after the call.
             </p>
           ) : (
             templates.map((t) => (
@@ -281,13 +291,33 @@ export function SendTextMessagesSection({
                   <MessageSquare className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(t)}
-                    className="text-left font-semibold underline decoration-foreground/30 underline-offset-2 hover:decoration-foreground/60"
-                  >
-                    {t.label || 'Untitled'}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(t)}
+                      className="text-left font-semibold underline decoration-foreground/30 underline-offset-2 hover:decoration-foreground/60"
+                    >
+                      {t.label || 'Untitled'}
+                    </button>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                      {(t.deliveryChannels ?? 'sms') === 'email' ? (
+                        <Mail className="h-3 w-3" aria-hidden />
+                      ) : (t.deliveryChannels ?? 'sms') === 'both' ? (
+                        <>
+                          <Smartphone className="h-3 w-3" aria-hidden />
+                          <Mail className="h-3 w-3" aria-hidden />
+                        </>
+                      ) : (
+                        <Smartphone className="h-3 w-3" aria-hidden />
+                      )}
+                      <span className="sr-only">Delivery: </span>
+                      {(t.deliveryChannels ?? 'sms') === 'email'
+                        ? 'Email'
+                        : (t.deliveryChannels ?? 'sms') === 'both'
+                          ? 'SMS & email'
+                          : 'SMS'}
+                    </span>
+                  </div>
                   <p className="text-sm text-muted-foreground mt-0.5 truncate">{previewLine(t.message)}</p>
                 </div>
                 <Switch
@@ -322,7 +352,7 @@ export function SendTextMessagesSection({
           <div className="min-w-0 flex-1 space-y-1">
             <h3 className="font-semibold text-foreground">Send a test message</h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Try SMS (Twilio) or email (Resend)—useful when SMS registration is still pending.
+              Try SMS or email—useful while delivery settings or carrier registration are still pending.
             </p>
           </div>
           <Button
@@ -331,7 +361,7 @@ export function SendTextMessagesSection({
             className="shrink-0 border-emerald-600/50 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
             onClick={() => setTestSmsOpen(true)}
           >
-            Send a test message!
+            Send message
           </Button>
         </div>
       </div>
@@ -391,16 +421,38 @@ export function SendTextMessagesSection({
                   ? 'Edit scheduling link message'
                   : 'Add a scheduling link to send to callers.'
                 : dialogMode === 'edit'
-                  ? 'Edit text message'
-                  : 'Add a new text message to send callers.'}
+                  ? 'Edit message'
+                  : 'Add a message for callers.'}
             </DialogTitle>
             {isSchedulingUI && dialogMode === 'add' ? (
               <p className="text-sm text-muted-foreground font-normal">
-                When someone wants to schedule, your agent will send them an SMS with your link.
+                When someone wants to schedule, your receptionist can send them your link by SMS or email (per your
+                delivery setting below).
               </p>
             ) : null}
           </DialogHeader>
           <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+            <div className="space-y-2">
+              <Label>Deliver via</Label>
+              <Select
+                value={draft.deliveryChannels}
+                onValueChange={(v) =>
+                  setDraft((d) => ({ ...d, deliveryChannels: v as VoiceTextDeliveryChannels }))
+                }
+              >
+                <SelectTrigger className="max-w-md">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sms">SMS only</SelectItem>
+                  <SelectItem value="email">Email only</SelectItem>
+                  <SelectItem value="both">SMS and email</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                After the call, we send only the channels the caller agreed to and we have contact info for.
+              </p>
+            </div>
             <div className="space-y-2">
               <Label>
                 Information to send <span className="text-destructive">*</span>
@@ -436,7 +488,9 @@ export function SendTextMessagesSection({
                 className="resize-y min-h-[100px]"
               />
               {!isSchedulingUI ? (
-                <p className="text-xs text-muted-foreground">This is the text message your caller will receive</p>
+                <p className="text-xs text-muted-foreground">
+                  This is the body sent by SMS and/or plain-text email, depending on delivery.
+                </p>
               ) : null}
             </div>
             <div className="space-y-2">
@@ -482,20 +536,7 @@ export function SendTextMessagesSection({
           <DialogHeader>
             <DialogTitle>Send a test message</DialogTitle>
             <DialogDescription>
-              {testChannel === 'sms' ? (
-                <>
-                  SMS uses <span className="font-medium text-foreground">TWILIO_ACCOUNT_SID</span>, auth, and{' '}
-                  <span className="font-medium text-foreground">TWILIO_SMS_FROM</span> (E.164). Email uses{' '}
-                  <span className="font-medium text-foreground">RESEND_API_KEY</span> and{' '}
-                  <span className="font-medium text-foreground">RESEND_FROM_EMAIL</span>. Admins only.
-                </>
-              ) : (
-                <>
-                  Email uses <span className="font-medium text-foreground">RESEND_API_KEY</span> and{' '}
-                  <span className="font-medium text-foreground">RESEND_FROM_EMAIL</span> (same as team invites).
-                  Switch to SMS for Twilio. Admins only.
-                </>
-              )}
+              Administrators can send a one-off test to the address or number you enter.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-1">
@@ -581,10 +622,8 @@ export function SendTextMessagesSection({
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Sending…
                 </>
-              ) : testChannel === 'email' ? (
-                'Send email'
               ) : (
-                'Send SMS'
+                'Send message'
               )}
             </Button>
           </DialogFooter>

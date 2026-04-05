@@ -1,3 +1,5 @@
+import { RESEND_FROM_EMAIL } from '@/lib/email/resend-from'
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -25,13 +27,12 @@ export async function sendClinicInviteEmail(params: ClinicInviteEmailParams): Pr
 
   const { Resend } = await import('resend')
   const resend = new Resend(apiKey)
-  const from = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'
   const safeClinic = escapeHtml(params.clinicName)
   const greeting =
     params.inviteeName?.trim() ? `Hi ${escapeHtml(params.inviteeName.trim())},` : 'Hi,'
 
   const { error } = await resend.emails.send({
-    from,
+    from: RESEND_FROM_EMAIL,
     to: params.to,
     subject: `You’re invited to join ${params.clinicName}`,
     html: `

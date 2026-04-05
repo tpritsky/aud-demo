@@ -9,6 +9,7 @@ import type {
   KnowledgeTimeSlot,
   VoiceKnowledgeItem,
   VoiceStyle,
+  VoiceTextDeliveryChannels,
   VoiceTextMessageKind,
   VoiceTextMessageTemplate,
 } from '@/lib/types'
@@ -155,7 +156,14 @@ export function formatKnowledgeForPrompt(callAi: ClinicCallAiSettings): string {
   )
 }
 
-/** Canned SMS lines for managed voice prompt. */
+function deliveryLabel(d: VoiceTextDeliveryChannels | undefined): string {
+  const v = d ?? 'sms'
+  if (v === 'both') return 'SMS and/or email (per caller preference and contact info)'
+  if (v === 'email') return 'Email only'
+  return 'SMS only'
+}
+
+/** Canned message lines for managed voice prompt. */
 export function formatTextMessageTemplatesForPrompt(callAi: ClinicCallAiSettings): string {
   const items = (callAi.textMessageTemplates || [])
     .filter((t) => t.enabled !== false && t.label?.trim() && t.message?.trim())
@@ -163,9 +171,34 @@ export function formatTextMessageTemplatesForPrompt(callAi: ClinicCallAiSettings
   if (!items.length) return ''
   return items
     .map((t) => {
-      const role = t.kind === 'scheduling_link' ? 'Scheduling link SMS' : 'SMS'
+      const role = t.kind === 'scheduling_link' ? 'Scheduling link' : 'Message'
       const when = t.instructions?.trim() || 'When the caller asks for this information.'
-      return `### ${role}: ${t.label}\n**Message:** ${t.message}\n**When to send:** ${when}`
+      return `### ${role}: ${t.label}\n**Deliver via:** ${deliveryLabel(t.deliveryChannels)}\n**Message:** ${t.message}\n**When to send:** ${when}`
+    })
+    .join('\n\n')
+}
+
+/** Machine-oriented list for Claude post-call analysis (template ids + delivery rules). */
+export function formatTextMessageTemplatesForPostProcess(callAi: ClinicCallAiSettings): string {
+  const items = (callAi.textMessageTemplates || [])
+    .filter((t) => t.enabled !== false && t.label?.trim() && t.message?.trim() && t.instructions?.trim())
+    .map((t) => ({
+      ...t,
+      label: t.label.trim(),
+      message: t.message.trim(),
+      instructions: t.instructions.trim(),
+    }))
+  if (!items.length) return ''
+  return items
+    .map((t) => {
+      const d = t.deliveryChannels ?? 'sms'
+      return [
+        `- template_id: ${t.id}`,
+        `  delivery_channels: ${d}`,
+        `  label: ${t.label}`,
+        `  message_body: ${t.message.slice(0, 800)}`,
+        `  when_to_send: ${t.instructions.slice(0, 500)}`,
+      ].join('\n')
     })
     .join('\n\n')
 }
@@ -246,6 +279,7 @@ function sanitizeKnowledgeItems(raw: unknown): VoiceKnowledgeItem[] {
 function sanitizeTextMessageTemplates(raw: unknown): VoiceTextMessageTemplate[] {
   if (!Array.isArray(raw)) return []
   const kinds = ['sms', 'scheduling_link'] as const
+  const deliveryOpts = ['sms', 'email', 'both'] as const
   const out: VoiceTextMessageTemplate[] = []
   for (const x of raw) {
     if (!x || typeof x !== 'object') continue
@@ -258,14 +292,21 @@ function sanitizeTextMessageTemplates(raw: unknown): VoiceTextMessageTemplate[] 
     const label = typeof o.label === 'string' ? o.label.slice(0, 200) : ''
     const message = typeof o.message === 'string' ? o.message.slice(0, 2000) : ''
     const instructions = typeof o.instructions === 'string' ? o.instructions.slice(0, 2000) : ''
-    out.push({
+    const deliveryRaw = o.deliveryChannels
+    const deliveryChannels =
+      typeof deliveryRaw === 'string' && (deliveryOpts as readonly string[]).includes(deliveryRaw)
+        ? (deliveryRaw as VoiceTextDeliveryChannels)
+        : undefined
+    const item: VoiceTextMessageTemplate = {
       id: o.id.slice(0, 80),
       kind,
       label,
       message,
       instructions,
       enabled: typeof o.enabled === 'boolean' ? o.enabled : true,
-    })
+    }
+    if (deliveryChannels) item.deliveryChannels = deliveryChannels
+    out.push(item)
     if (out.length >= TEXT_MESSAGE_TEMPLATES_MAX_COUNT) break
   }
   return out
@@ -494,6 +535,14 @@ export function buildClaudeCallContext(opts: {
   const flow = expandVoiceCallFlowToGuidance(opts.callAi.callFlow)
   if (flow) {
     parts.push('How calls should be handled (staff preferences):\n' + flow.slice(0, 6000))
+  }
+  const postTpl = formatTextMessageTemplatesForPostProcess(opts.callAi)
+  if (postTpl) {
+    parts.push(
+      'Follow-up message templates (post-call delivery; template_id values must match exactly):\n' +
+        postTpl +
+        '\n\nIf the transcript shows the caller clearly consented to receive a specific template (e.g. agreed to a text, link, or email), include it in follow_up_messages. Only set caller_confirmed when they explicitly agreed. Respect delivery_channels: sms = SMS only; email = email only; both = you may set send_sms and/or send_email based on what they asked for and which contact details appear in the transcript. When send_email is true, set destination_email to an address explicitly given on the call.'
+    )
   }
   return parts.join('\n\n')
 }

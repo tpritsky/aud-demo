@@ -338,10 +338,11 @@ export function AgentWorkspaceTab({ section, superAdminClinicId = null }: Props)
             <div className="flex flex-col">
               <div className="border-b border-border bg-card px-5 py-3.5 sm:px-6">
                 <h2 className="text-2xl sm:text-[1.65rem] font-bold tracking-tight text-foreground">
-                  Send text messages
+                  Send text/email messages
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1 max-w-2xl leading-relaxed">
-                  Your receptionist can text callers messages with scheduling links, website info, and more.
+                  Your receptionist can send callers SMS or plain-text email with scheduling links, website info, and
+                  more—after the call when they agree.
                 </p>
               </div>
               <div className="p-4 sm:p-5">

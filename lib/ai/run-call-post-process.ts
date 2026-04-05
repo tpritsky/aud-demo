@@ -6,6 +6,8 @@ import {
   normalizeVertical,
   parseClinicSettingsBlob,
 } from '@/lib/clinic-call-ai'
+import { deliverFollowUpMessagesAfterCall } from '@/lib/server/deliver-follow-up-messages'
+import type { ClinicCallAiSettings } from '@/lib/types'
 
 /**
  * Service-role job: load call by id, run Claude, persist AI columns.
@@ -38,7 +40,7 @@ export async function runCallPostProcessJob(callId: string): Promise<void> {
     .update({ ai_processing_status: 'processing', ai_error: null })
     .eq('id', callId)
     .in('ai_processing_status', ['pending', 'failed'])
-    .select('id, transcript, clinic_id')
+    .select('id, transcript, clinic_id, phone')
     .maybeSingle()
 
   if (claimErr) {
@@ -58,10 +60,16 @@ export async function runCallPostProcessJob(callId: string): Promise<void> {
     return
   }
 
-  const row = claimed as { id: string; transcript: string | null; clinic_id: string | null }
+  const row = claimed as {
+    id: string
+    transcript: string | null
+    clinic_id: string | null
+    phone: string | null
+  }
 
   let clinicName: string | undefined
   let extraClinicContext: string | undefined
+  let callAiForDelivery: ClinicCallAiSettings | null = null
   if (row.clinic_id) {
     const { data: clinic } = await supabase
       .from('clinics')
@@ -74,6 +82,7 @@ export async function runCallPostProcessJob(callId: string): Promise<void> {
       const vertical = normalizeVertical(c.vertical)
       const { callAi: partialAi } = parseClinicSettingsBlob(c.settings)
       const callAi = mergeCallAiSettings(vertical, partialAi)
+      callAiForDelivery = callAi
       extraClinicContext = buildClaudeCallContext({ clinicName, vertical, callAi })
     }
   }
@@ -94,6 +103,16 @@ export async function runCallPostProcessJob(callId: string): Promise<void> {
         ai_error: null,
       })
       .eq('id', callId)
+
+    if (callAiForDelivery && result.follow_up_messages.length > 0) {
+      await deliverFollowUpMessagesAfterCall({
+        templates: callAiForDelivery.textMessageTemplates ?? [],
+        intents: result.follow_up_messages,
+        callerPhoneFromResult: result.caller_phone,
+        callRowPhone: row.phone,
+        clinicName,
+      })
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error'
     console.error('[runCallPostProcessJob]', msg)

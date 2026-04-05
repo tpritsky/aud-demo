@@ -64,7 +64,7 @@ const NAV: { key: NavKey; label: string }[] = [
   { key: 'knowledge', label: 'Knowledge' },
   { key: 'questions', label: 'Ask questions' },
   { key: 'transfer', label: 'Transfer calls' },
-  { key: 'texts', label: 'Send texts' },
+  { key: 'texts', label: 'Text & email' },
   { key: 'scheduling', label: 'Scheduling' },
   { key: 'notifications', label: 'Notifications' },
   { key: 'extras', label: 'Extra notes' },

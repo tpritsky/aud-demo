@@ -8,6 +8,14 @@ import Anthropic from '@anthropic-ai/sdk'
  * - ANTHROPIC_CALL_MODEL (optional, default claude-haiku-4-5)
  */
 
+export type FollowUpMessageIntent = {
+  template_id: string
+  caller_confirmed: boolean
+  send_sms: boolean
+  send_email: boolean
+  destination_email: string | null
+}
+
 export type CallPostProcessResult = {
   caller_name: string | null
   caller_phone: string | null
@@ -17,6 +25,8 @@ export type CallPostProcessResult = {
   /** 1 = lowest … 4 = highest upside for the business */
   business_value: 1 | 2 | 3 | 4
   tags: string[]
+  /** Post-call SMS/email sends (clinic templates + caller consent). */
+  follow_up_messages: FollowUpMessageIntent[]
 }
 
 const DEFAULT_MODEL = 'claude-haiku-4-5'
@@ -25,7 +35,8 @@ const BASE_SYSTEM = `You analyze phone call transcripts for a clinic / business 
 Extract structured facts for staff triage. Be conservative: if unsure, use null for name/phone and lower scores.
 Urgency: 1=routine, 2=soon, 3=same day, 4=immediate callback.
 Business value: 1=low, 2=moderate, 3=high, 4=strategic revenue or retention risk.
-Tags: short lowercase snake_case labels (e.g. billing_question, new_patient, hearing_aid_issue). Max 8 tags.`
+Tags: short lowercase snake_case labels (e.g. billing_question, new_patient, hearing_aid_issue). Max 8 tags.
+If follow-up message templates are listed in clinic guidance, you may populate follow_up_messages only when the caller clearly consented; otherwise use an empty array.`
 
 function getClient(): Anthropic {
   const key = process.env.CALUDE_CALL_SUMMARY_KEY1 || process.env.ANTHROPIC_API_KEY
@@ -71,6 +82,34 @@ function toolSchema(): Anthropic.Messages.Tool {
           items: { type: 'string' },
           description: 'Short labels for filtering.',
         },
+        follow_up_messages: {
+          type: 'array',
+          description:
+            'Templates the caller consented to receive after the call. Empty if none or no templates configured.',
+          items: {
+            type: 'object',
+            properties: {
+              template_id: {
+                type: 'string',
+                description: 'Exact template_id from the clinic follow-up list.',
+              },
+              caller_confirmed: {
+                type: 'boolean',
+                description: 'True only if the caller explicitly agreed to receive this.',
+              },
+              send_sms: { type: 'boolean', description: 'Whether to send SMS (allowed by template delivery rules).' },
+              send_email: {
+                type: 'boolean',
+                description: 'Whether to send email (allowed by template delivery rules).',
+              },
+              destination_email: {
+                type: ['string', 'null'],
+                description: 'Email from the transcript when send_email is true.',
+              },
+            },
+            required: ['template_id', 'caller_confirmed', 'send_sms', 'send_email', 'destination_email'],
+          },
+        },
       },
       required: [
         'caller_name',
@@ -79,9 +118,33 @@ function toolSchema(): Anthropic.Messages.Tool {
         'response_urgency',
         'business_value',
         'tags',
+        'follow_up_messages',
       ],
     },
   }
+}
+
+function normalizeFollowUpMessages(raw: unknown): FollowUpMessageIntent[] {
+  if (!Array.isArray(raw)) return []
+  const out: FollowUpMessageIntent[] = []
+  for (const x of raw) {
+    if (!x || typeof x !== 'object') continue
+    const o = x as Record<string, unknown>
+    if (typeof o.template_id !== 'string' || !o.template_id.trim()) continue
+    const dest =
+      typeof o.destination_email === 'string' && o.destination_email.trim()
+        ? o.destination_email.trim().slice(0, 320)
+        : null
+    out.push({
+      template_id: o.template_id.trim().slice(0, 80),
+      caller_confirmed: o.caller_confirmed === true,
+      send_sms: o.send_sms === true,
+      send_email: o.send_email === true,
+      destination_email: dest,
+    })
+    if (out.length >= 5) break
+  }
+  return out
 }
 
 function normalizeResult(raw: Record<string, unknown>): CallPostProcessResult {
@@ -99,6 +162,7 @@ function normalizeResult(raw: Record<string, unknown>): CallPostProcessResult {
     response_urgency: urgency,
     business_value: value,
     tags,
+    follow_up_messages: normalizeFollowUpMessages(raw.follow_up_messages),
   }
 }
 
@@ -127,6 +191,7 @@ export async function postProcessCallTranscript(
       response_urgency: 1,
       business_value: 1,
       tags: ['empty_transcript'],
+      follow_up_messages: [],
     }
   }
 
@@ -146,7 +211,7 @@ export async function postProcessCallTranscript(
 
   const message = await client.messages.create({
     model,
-    max_tokens: 1024,
+    max_tokens: 1536,
     system,
     tools: [toolSchema()],
     tool_choice: { type: 'tool', name: 'submit_call_analysis' },

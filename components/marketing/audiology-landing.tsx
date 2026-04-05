@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import {
   Phone,
   Calendar,
@@ -16,10 +18,14 @@ import {
   Bell,
   Sparkles,
   Play,
+  Pause,
   PhoneIncoming,
   ChevronDown,
   ChevronUp,
-  Headphones,
+  Bot,
+  BookOpen,
+  Settings2,
+  Send,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SUPPORT_EMAIL, supportMailto } from '@/lib/support'
@@ -182,107 +188,342 @@ const testimonials = [
   },
 ]
 
+type DemoLine = { role: 'agent' | 'user'; text: string }
+
+type DemoCall = {
+  id: string
+  phone: string
+  time: string
+  intent: string
+  caller: string
+  summary: string
+  durationSec: number
+  transcript: DemoLine[]
+}
+
+const LANDING_DEMO_CALLS: DemoCall[] = [
+  {
+    id: '1',
+    phone: '(555) 201-8841',
+    time: '2m ago',
+    intent: 'Reschedule',
+    caller: 'Returning',
+    summary:
+      'Caller asked to reschedule. Agent offered two times, confirmed the choice, and sent a recap.',
+    durationSec: 204,
+    transcript: [
+      { role: 'agent', text: 'Thanks for calling—how can I help you today?' },
+      { role: 'user', text: 'I need to move my Thursday time if anything opens sooner.' },
+      { role: 'agent', text: 'I have Tuesday at 2:15 or Wednesday at 9:30—would either work?' },
+    ],
+  },
+  {
+    id: '2',
+    phone: '(555) 442-0192',
+    time: '14m ago',
+    intent: 'New patient',
+    caller: 'New',
+    summary:
+      'Caller asked about hearing eval availability and insurance. Agent shared next openings.',
+    durationSec: 189,
+    transcript: [
+      { role: 'agent', text: 'Harmony Hearing, this is the virtual front desk.' },
+      { role: 'user', text: 'Do you take UnitedHealthcare for a hearing test?' },
+      { role: 'agent', text: 'We do—our next audiology slot is Thursday at 11 AM. Want me to hold that?' },
+    ],
+  },
+  {
+    id: '3',
+    phone: '(555) 883-1104',
+    time: '1h ago',
+    intent: 'Billing',
+    caller: 'Returning',
+    summary: 'Question about an invoice. Agent confirmed account and offered to email a copy.',
+    durationSec: 156,
+    transcript: [
+      { role: 'agent', text: 'How can I help you today?' },
+      { role: 'user', text: 'I need a copy of last month’s invoice.' },
+      { role: 'agent', text: 'I can text a secure link to the email on file—sound good?' },
+    ],
+  },
+]
+
+function fmtDur(sec: number): string {
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+const WORKSPACE_TABS = [
+  { key: 'calls' as const, label: 'Calls', icon: PhoneIncoming },
+  { key: 'agent' as const, label: 'Agent', icon: Bot },
+  { key: 'knowledge' as const, label: 'Knowledge', icon: BookOpen },
+  { key: 'settings' as const, label: 'Settings', icon: Settings2 },
+]
+
 function LandingDashboardMockup() {
+  const [workspace, setWorkspace] = useState<(typeof WORKSPACE_TABS)[number]['key']>('calls')
+  const [selectedId, setSelectedId] = useState(LANDING_DEMO_CALLS[0].id)
+  const [playing, setPlaying] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const [draft, setDraft] = useState('')
+  const [extraByCall, setExtraByCall] = useState<Record<string, DemoLine[]>>({})
+  const replyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const selected = LANDING_DEMO_CALLS.find((c) => c.id === selectedId) ?? LANDING_DEMO_CALLS[0]
+  const extras = extraByCall[selected.id] ?? []
+  const lines = [...selected.transcript, ...extras]
+
+  useEffect(() => {
+    if (!playing) return
+    const t = window.setInterval(() => {
+      setElapsed((e) => (e >= selected.durationSec ? e : e + 1))
+    }, 1000)
+    return () => window.clearInterval(t)
+  }, [playing, selected.durationSec])
+
+  useEffect(() => {
+    if (elapsed >= selected.durationSec && playing) setPlaying(false)
+  }, [elapsed, selected.durationSec, playing])
+
+  useEffect(() => {
+    return () => {
+      if (replyTimer.current) clearTimeout(replyTimer.current)
+    }
+  }, [])
+
+  const togglePlay = () => {
+    if (elapsed >= selected.durationSec) setElapsed(0)
+    setPlaying((p) => !p)
+  }
+
+  const sendDemoNote = () => {
+    const t = draft.trim()
+    if (!t) return
+    setDraft('')
+    setExtraByCall((prev) => ({
+      ...prev,
+      [selected.id]: [...(prev[selected.id] ?? []), { role: 'user', text: t }],
+    }))
+    if (replyTimer.current) clearTimeout(replyTimer.current)
+    replyTimer.current = setTimeout(() => {
+      setExtraByCall((prev) => ({
+        ...prev,
+        [selected.id]: [
+          ...(prev[selected.id] ?? []),
+          {
+            role: 'agent',
+            text: 'Noted—I’ll pass that to your team in the real workspace. Thanks for trying the demo!',
+          },
+        ],
+      }))
+    }, 700)
+  }
+
   return (
     <div
-      className="relative mx-auto mt-14 w-full max-w-5xl select-none rounded-2xl border border-border/80 bg-gradient-to-b from-card to-muted/30 p-1 shadow-[0_24px_80px_-20px_rgba(15,80,50,0.12)] md:rounded-3xl md:p-1.5"
-      aria-hidden
+      className="relative mx-auto mt-14 w-full max-w-5xl rounded-2xl border border-border/80 bg-gradient-to-b from-card to-muted/30 p-1 shadow-[0_24px_80px_-20px_rgba(15,80,50,0.12)] md:rounded-3xl md:p-1.5"
+      aria-label="Interactive product preview"
     >
-      <div className="flex max-h-[min(68vh,520px)] min-h-[340px] overflow-hidden rounded-[1.15rem] bg-white text-zinc-800 shadow-inner md:max-h-[480px] md:rounded-[1.35rem]">
+      <p className="sr-only">
+        Demo only: switch workspace tabs, pick a call, play the sample timeline, or add a note to the transcript.
+      </p>
+      <div className="flex max-h-[min(68vh,560px)] min-h-[360px] overflow-hidden rounded-[1.15rem] bg-white text-zinc-800 shadow-inner md:max-h-[520px] md:rounded-[1.35rem]">
         <aside className="hidden w-[38%] max-w-[200px] shrink-0 flex-col border-r border-zinc-200 bg-zinc-50/90 sm:flex lg:max-w-[220px]">
           <div className="border-b border-zinc-200 px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
             Workspace
           </div>
           <nav className="flex flex-1 flex-col gap-0.5 p-2 text-[11px]">
-            <div className="flex items-center gap-2 rounded-lg bg-primary px-2 py-1.5 font-medium text-primary-foreground">
-              <PhoneIncoming className="size-3.5 shrink-0" />
-              Calls
-            </div>
-            <div className="px-2 py-1 text-zinc-500">Agent</div>
-            <div className="pl-4 text-zinc-400">Knowledge</div>
-            <div className="pl-4 text-zinc-400">Settings</div>
+            {WORKSPACE_TABS.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setWorkspace(key)
+                  if (key !== 'calls') setPlaying(false)
+                }}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left font-medium transition-colors',
+                  workspace === key
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-zinc-600 hover:bg-zinc-100',
+                )}
+              >
+                <Icon className="size-3.5 shrink-0" aria-hidden />
+                {label}
+              </button>
+            ))}
           </nav>
         </aside>
         <div className="flex w-[32%] min-w-[120px] flex-col border-r border-zinc-200 bg-white max-sm:hidden">
           <div className="border-b border-zinc-100 px-3 py-2 text-[10px] font-medium text-zinc-500">Recent</div>
-          <ul className="flex-1 space-y-0.5 p-1.5">
-            {[
-              { n: '(555) 201-8841', t: '2m ago', active: true },
-              { n: '(555) 442-0192', t: '14m ago', active: false },
-              { n: '(555) 883-1104', t: '1h ago', active: false },
-            ].map((row) => (
-              <li
-                key={row.n}
-                className={cn(
-                  'rounded-lg px-2 py-1.5 text-[10px] lg:text-[11px]',
-                  row.active ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-50',
-                )}
-              >
-                <div className="font-medium">{row.n}</div>
-                <div className="text-[9px] text-zinc-400">{row.t}</div>
+          <ul className="flex-1 space-y-0.5 overflow-y-auto p-1.5">
+            {LANDING_DEMO_CALLS.map((row) => (
+              <li key={row.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedId(row.id)
+                    setPlaying(false)
+                    setElapsed(0)
+                  }}
+                  className={cn(
+                    'w-full rounded-lg px-2 py-1.5 text-left text-[10px] transition-colors lg:text-[11px]',
+                    selectedId === row.id ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-50',
+                  )}
+                >
+                  <div className="font-medium">{row.phone}</div>
+                  <div
+                    className={cn(
+                      'text-[9px]',
+                      selectedId === row.id ? 'text-zinc-300' : 'text-zinc-400',
+                    )}
+                  >
+                    {row.time}
+                  </div>
+                </button>
               </li>
             ))}
           </ul>
         </div>
         <div className="flex min-w-0 flex-1 flex-col bg-gradient-to-b from-white to-zinc-50/80">
-          <div className="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2">
-            <div>
-              <div className="text-[11px] font-semibold text-zinc-900 lg:text-xs">Inbound call</div>
-              <div className="text-[9px] text-zinc-500">Today · 10:42 AM · 3:24</div>
-            </div>
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-medium text-emerald-800">Resolved</span>
-          </div>
-          <div className="flex-1 space-y-2 overflow-y-auto p-3">
-            <div className="rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50 to-orange-50/80 p-2.5 shadow-sm">
-              <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-amber-900/70">Summary</div>
-              <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
-                <dt className="text-zinc-500">Intent</dt>
-                <dd className="font-medium text-zinc-800">Reschedule</dd>
-                <dt className="text-zinc-500">Caller</dt>
-                <dd className="font-medium text-zinc-800">Returning</dd>
-              </dl>
-              <p className="mt-1.5 text-[10px] leading-relaxed text-zinc-700">
-                Caller asked to reschedule. Agent offered two times, confirmed the choice, and sent a recap.
+          {workspace !== 'calls' ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                {workspace === 'agent' ? (
+                  <Bot className="size-6" />
+                ) : workspace === 'knowledge' ? (
+                  <BookOpen className="size-6" />
+                ) : (
+                  <Settings2 className="size-6" />
+                )}
+              </div>
+              <p className="text-xs font-semibold text-zinc-900">
+                {workspace === 'agent' && 'Agent workspace'}
+                {workspace === 'knowledge' && 'Knowledge base'}
+                {workspace === 'settings' && 'Settings'}
+              </p>
+              <p className="max-w-[220px] text-[10px] leading-relaxed text-zinc-500">
+                In the live app this is where you tune the receptionist, facts, and phone line. Here it’s a preview—try{' '}
+                <button
+                  type="button"
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                  onClick={() => setWorkspace('calls')}
+                >
+                  Calls
+                </button>{' '}
+                for the interactive transcript.
               </p>
             </div>
-            <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-2 py-2">
-              <button
-                type="button"
-                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
-                tabIndex={-1}
-              >
-                <Play className="size-3.5 fill-current" />
-              </button>
-              <div className="min-w-0 flex-1">
-                <div className="flex h-6 items-end gap-px">
-                  {Array.from({ length: 32 }).map((_, i) => (
-                    <span
-                      key={i}
-                      className="w-0.5 rounded-full bg-zinc-300"
-                      style={{ height: `${20 + ((i * 17) % 100) / 5}px` }}
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2">
+                <div>
+                  <div className="text-[11px] font-semibold text-zinc-900 lg:text-xs">Inbound call</div>
+                  <div className="text-[9px] text-zinc-500">
+                    Today · 10:42 AM · {fmtDur(selected.durationSec)}
+                  </div>
+                </div>
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-medium text-emerald-800">
+                  Resolved
+                </span>
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+                  <div className="rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50 to-orange-50/80 p-2.5 shadow-sm">
+                    <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-amber-900/70">
+                      Summary
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+                      <dt className="text-zinc-500">Intent</dt>
+                      <dd className="font-medium text-zinc-800">{selected.intent}</dd>
+                      <dt className="text-zinc-500">Caller</dt>
+                      <dd className="font-medium text-zinc-800">{selected.caller}</dd>
+                    </dl>
+                    <p className="mt-1.5 text-[10px] leading-relaxed text-zinc-700">{selected.summary}</p>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      aria-label={playing ? 'Pause demo playback' : 'Play demo playback'}
+                      className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform active:scale-95"
+                    >
+                      {playing ? (
+                        <Pause className="size-3.5 fill-current" />
+                      ) : (
+                        <Play className="size-3.5 fill-current" />
+                      )}
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex h-6 items-end gap-px">
+                        {Array.from({ length: 32 }).map((_, i) => {
+                          const base = 20 + ((i * 17) % 100) / 5
+                          const bump = playing ? Math.sin((elapsed + i) * 0.45) * 6 : 0
+                          return (
+                            <span
+                              key={i}
+                              className={cn(
+                                'w-0.5 rounded-full transition-[height] duration-150',
+                                playing ? 'bg-primary/50' : 'bg-zinc-300',
+                              )}
+                              style={{ height: `${Math.min(28, Math.max(8, base + bump))}px` }}
+                            />
+                          )
+                        })}
+                      </div>
+                      <div className="mt-0.5 flex justify-between text-[9px] text-zinc-400">
+                        <span>{fmtDur(elapsed)}</span>
+                        <span>{fmtDur(selected.durationSec)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 text-[10px] leading-snug">
+                    {lines.map((line, idx) =>
+                      line.role === 'agent' ? (
+                        <div
+                          key={`${idx}-${line.text.slice(0, 12)}`}
+                          className="rounded-lg rounded-tl-sm bg-zinc-100 px-2 py-1.5 text-zinc-700"
+                        >
+                          <span className="font-semibold text-zinc-900">Agent · </span>
+                          {line.text}
+                        </div>
+                      ) : (
+                        <div
+                          key={`${idx}-${line.text.slice(0, 12)}`}
+                          className="ml-4 rounded-lg rounded-tr-sm border border-zinc-200 bg-white px-2 py-1.5 text-zinc-700"
+                        >
+                          {line.text}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+                <div className="shrink-0 border-t border-zinc-100 bg-white/90 p-2">
+                  <form
+                    className="flex gap-1.5"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      sendDemoNote()
+                    }}
+                  >
+                    <Input
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      placeholder="Add a staff note to this thread…"
+                      className="h-8 flex-1 text-[11px]"
+                      aria-label="Demo message"
                     />
-                  ))}
+                    <Button type="submit" size="sm" className="h-8 shrink-0 gap-1 px-2.5 text-[11px]">
+                      <Send className="size-3.5" />
+                      Send
+                    </Button>
+                  </form>
+                  <p className="mt-1 text-[9px] text-zinc-400">Demo only—nothing is saved or sent.</p>
                 </div>
-                <div className="mt-0.5 flex justify-between text-[9px] text-zinc-400">
-                  <span>0:00</span>
-                  <span>3:24</span>
-                </div>
               </div>
-            </div>
-            <div className="space-y-1.5 text-[10px] leading-snug">
-              <div className="rounded-lg rounded-tl-sm bg-zinc-100 px-2 py-1.5 text-zinc-700">
-                <span className="font-semibold text-zinc-900">Agent · </span>
-                Thanks for calling—how can I help you today?
-              </div>
-              <div className="ml-4 rounded-lg rounded-tr-sm border border-zinc-200 bg-white px-2 py-1.5 text-zinc-700">
-                I need to move my Thursday time if anything opens sooner.
-              </div>
-              <div className="rounded-lg rounded-tl-sm bg-zinc-100 px-2 py-1.5 text-zinc-700">
-                <span className="font-semibold text-zinc-900">Agent · </span>
-                I have Tuesday at 2:15 or Wednesday at 9:30—would either work?
-              </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -296,10 +537,15 @@ export function AudiologyLanding() {
     <div className="min-h-screen bg-background text-foreground antialiased selection:bg-primary/20 selection:text-foreground">
       <header className="sticky top-0 z-50 border-b border-border/60 bg-background/90 shadow-sm backdrop-blur-xl supports-[backdrop-filter]:bg-background/75">
         <div className="container mx-auto flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
-          <Link href="/" className="flex min-w-0 items-center gap-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
-              <Headphones className="h-4 w-4" />
-            </div>
+          <Link href="/" className="flex min-w-0 items-center gap-2.5">
+            <Image
+              src="/vocalis-support-avatar.png"
+              alt=""
+              width={36}
+              height={36}
+              className="size-9 shrink-0 rounded-xl shadow-sm ring-1 ring-border/60"
+              priority
+            />
             <span className="truncate text-lg font-bold tracking-tight">Vocalis</span>
           </Link>
           <nav className="hidden items-center gap-7 lg:flex">

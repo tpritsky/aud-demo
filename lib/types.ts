@@ -65,16 +65,21 @@ export interface VoiceCallFlowSettings {
 /** Preset SMS / scheduling texts the receptionist can send to callers (stored in callAi). */
 export type VoiceTextMessageKind = 'sms' | 'scheduling_link'
 
+/** How a template may be delivered when triggered after a call (post-processing). Omitted = SMS-only (legacy). */
+export type VoiceTextDeliveryChannels = 'sms' | 'email' | 'both'
+
 export interface VoiceTextMessageTemplate {
   id: string
   kind: VoiceTextMessageKind
   /** Short label, e.g. "Pricing Info" */
   label: string
-  /** Exact SMS body (include scheduling URL in the message for scheduling_link). */
+  /** Message body sent by SMS and/or email (include scheduling URL for scheduling_link). */
   message: string
   /** When the agent should offer or send this text. */
   instructions: string
   enabled: boolean
+  /** Post-call delivery channels; defaults to SMS when omitted. */
+  deliveryChannels?: VoiceTextDeliveryChannels
 }
 
 /** PATCH body fragment; callFlow may be a partial update merged server-side. */

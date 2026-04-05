@@ -1,5 +1,7 @@
+import { RESEND_FROM_EMAIL } from '@/lib/email/resend-from'
+
 /**
- * Admin test email via Resend (same env as team invites).
+ * Transactional email via Resend (test sends, post-call follow-ups, etc.).
  */
 export async function sendTestEmail(params: {
   to: string
@@ -13,10 +15,9 @@ export async function sendTestEmail(params: {
 
   const { Resend } = await import('resend')
   const resend = new Resend(apiKey)
-  const from = process.env.RESEND_FROM_EMAIL?.trim() || 'onboarding@resend.dev'
 
   const { error } = await resend.emails.send({
-    from,
+    from: RESEND_FROM_EMAIL,
     to: params.to,
     subject: params.subject,
     text: params.body,

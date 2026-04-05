@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             error:
-              'Invite email is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL (verified domain) in production.',
+              'Invite email is not configured. Set RESEND_API_KEY (Resend) in production.',
           },
           { status: 503 }
         )

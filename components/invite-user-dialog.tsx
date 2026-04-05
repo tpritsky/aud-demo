@@ -142,11 +142,10 @@ export function InviteUserDialog({
                   Resend
                 </a>
                 . Add <code className="rounded bg-muted px-1 py-0.5 text-[11px]">RESEND_API_KEY</code> to{' '}
-                <code className="rounded bg-muted px-1 py-0.5 text-[11px]">.env.local</code>
-                (get a key at resend.com), optionally{' '}
-                <code className="rounded bg-muted px-1 py-0.5 text-[11px]">RESEND_FROM_EMAIL</code> for your domain,
-                then restart <code className="rounded bg-muted px-1 py-0.5 text-[11px]">npm run dev</code>. On Vercel,
-                set the same variables for production.
+                <code className="rounded bg-muted px-1 py-0.5 text-[11px]">.env.local</code> (get a key at
+                resend.com), then restart <code className="rounded bg-muted px-1 py-0.5 text-[11px]">npm run dev</code>.
+                On Vercel, set the same variable for production. Outbound mail sends from{' '}
+                <code className="rounded bg-muted px-1 py-0.5 text-[11px]">support@vocalis.team</code>.
               </p>
               <p className="text-xs text-muted-foreground">Until then, copy this link and send it yourself:</p>
             </div>

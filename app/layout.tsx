@@ -29,7 +29,8 @@ export const metadata: Metadata = {
   applicationName: "Vocalis",
   icons: {
     icon: [
-      { url: "/icon", type: "image/png" },
+      { url: "/favicon.ico", sizes: "48x48", type: "image/png" },
+      { url: "/icon", type: "image/png", sizes: "48x48" },
       { url: "/icon.svg", type: "image/svg+xml" },
     ],
     apple: [{ url: "/apple-icon", type: "image/png", sizes: "180x180" }],
