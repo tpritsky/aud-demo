@@ -312,7 +312,7 @@ export function AgentConfigurationTab({ superAdminClinicId = null }: AgentConfig
               value={agentConfig.voiceStyle}
               onValueChange={(v) => updateConfig('voiceStyle', v as VoiceStyle)}
             >
-              <SelectTrigger id="voice-style">
+              <SelectTrigger id="voice-style" className="h-auto w-full min-h-11 py-2.5 sm:h-9 sm:min-h-9 sm:w-fit sm:py-2">
                 <SelectValue placeholder="Select voice style" />
               </SelectTrigger>
               <SelectContent>
@@ -364,8 +364,8 @@ export function AgentConfigurationTab({ superAdminClinicId = null }: AgentConfig
               description: 'Answer basic billing questions',
             },
           ].map((intent) => (
-            <div key={intent.key} className="flex items-center justify-between">
-              <div className="space-y-0.5">
+            <div key={intent.key} className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1 space-y-0.5">
                 <Label htmlFor={`intent-${intent.key}`} className="text-base">
                   {intent.label}
                 </Label>
@@ -373,6 +373,7 @@ export function AgentConfigurationTab({ superAdminClinicId = null }: AgentConfig
               </div>
               <Switch
                 id={`intent-${intent.key}`}
+                className="shrink-0"
                 checked={agentConfig.allowedIntents[intent.key]}
                 onCheckedChange={(checked) => updateAllowedIntents(intent.key, checked)}
               />
@@ -415,8 +416,8 @@ export function AgentConfigurationTab({ superAdminClinicId = null }: AgentConfig
               description: 'Escalate when caller explicitly asks for a person',
             },
           ].map((rule) => (
-            <div key={rule.key} className="flex items-center justify-between">
-              <div className="space-y-0.5">
+            <div key={rule.key} className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1 space-y-0.5">
                 <Label htmlFor={`rule-${rule.key}`} className="text-base">
                   {rule.label}
                 </Label>
@@ -424,6 +425,7 @@ export function AgentConfigurationTab({ superAdminClinicId = null }: AgentConfig
               </div>
               <Switch
                 id={`rule-${rule.key}`}
+                className="shrink-0"
                 checked={agentConfig.escalationRules[rule.key]}
                 onCheckedChange={(checked) => updateEscalationRules(rule.key, checked)}
               />
@@ -537,8 +539,8 @@ export function AgentConfigurationTab({ superAdminClinicId = null }: AgentConfig
                 description: 'Create callback when patient doesn\'t answer',
               },
             ].map((setting) => (
-              <div key={setting.key} className="flex items-center justify-between">
-                <div className="space-y-0.5">
+              <div key={setting.key} className="flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1 space-y-0.5">
                   <Label htmlFor={`callback-${setting.key}`} className="text-base">
                     {setting.label}
                   </Label>
@@ -546,6 +548,7 @@ export function AgentConfigurationTab({ superAdminClinicId = null }: AgentConfig
                 </div>
                 <Switch
                   id={`callback-${setting.key}`}
+                  className="shrink-0"
                   checked={agentConfig.callbackSettings[setting.key]}
                   onCheckedChange={(checked) => updateCallbackSettings(setting.key, checked)}
                 />

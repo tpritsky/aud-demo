@@ -349,7 +349,7 @@ export function AudiologyLanding() {
             The AI voice receptionist that <span className="text-primary">answers every call</span>
             <br className="hidden sm:block" />
             <span className="sm:ml-2">while </span>
-            <span className="text-primary">we focus on what matters</span>
+            <span className="text-primary">you focus on what matters</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
             Automate inbound calls, lighten the front desk, and give every caller a consistent experience—without losing
