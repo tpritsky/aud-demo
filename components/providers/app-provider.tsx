@@ -24,6 +24,7 @@ import {
 import { triggerOutboundCall, CallDynamicVariables } from '@/lib/call-trigger'
 import { normalizePhoneNumber } from '@/lib/phone-format'
 import { supabase } from '@/lib/supabase/client'
+import { hasRealSupabaseConfig } from '@/lib/supabase/env'
 import {
   clearLocalSupabaseSession,
   isRefreshTokenAuthError,
@@ -95,6 +96,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Use ref to prevent concurrent executions of checkDueItems
   const isProcessingRef = useRef(false)
   const userIdRef = useRef<string | null>(null)
+
+  // NEXT_PUBLIC_* are baked in at build time; missing values → login hits the wrong project or a placeholder.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!hasRealSupabaseConfig()) {
+      console.error(
+        '[Vocalis] Supabase URL/key missing or invalid in this deployment. In Vercel set NEXT_PUBLIC_SUPABASE_URL (https://…supabase.co) and NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY) for Production and Preview, then redeploy.',
+      )
+    }
+  }, [])
 
   // Next.js / Turbopack / Link prefetch often abort in-flight fetch; avoid noisy runtime overlay.
   useEffect(() => {
