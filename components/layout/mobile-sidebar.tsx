@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
@@ -35,6 +35,7 @@ const mainItems = [
 ] as const
 
 export function MobileSidebar() {
+  const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const clinicSuffix = (() => {
@@ -151,7 +152,12 @@ export function MobileSidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
-          onClick={() => setIsLoggedIn(false)}
+          onClick={() => {
+            void (async () => {
+              await setIsLoggedIn(false)
+              router.replace('/dashboard')
+            })()
+          }}
         >
           <LogOut className="h-5 w-5" />
           Sign Out

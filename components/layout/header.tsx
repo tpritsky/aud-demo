@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Bell, Search, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import { useAppStore } from '@/lib/store'
+import { toast } from 'sonner'
 import type { ProfileRole } from '@/lib/types'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { MobileSidebar } from './mobile-sidebar'
@@ -60,6 +61,7 @@ function initialsForAccount(
 }
 
 export function Header({ title }: HeaderProps) {
+  const router = useRouter()
   const pathname = usePathname() || ''
   const showSearch = shouldShowPatientCallSearch(pathname)
   const { callbackTasks, setIsLoggedIn, sessionAccount } = useAppStore()
@@ -159,7 +161,7 @@ export function Header({ title }: HeaderProps) {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel className="space-y-0.5">
               <span className="font-medium">
-                {sessionAccount?.fullName?.trim() || sessionAccount?.email || 'Account'}
+                {sessionAccount?.fullName?.trim() || sessionAccount?.email || 'Your account'}
               </span>
               {sessionAccount ? (
                 <span className="block text-xs font-normal text-muted-foreground">
@@ -168,10 +170,25 @@ export function Header({ title }: HeaderProps) {
               ) : null}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/settings/account">Account</Link>
+            <DropdownMenuItem asChild className="cursor-pointer">
+              <Link href="/settings/account">Account settings</Link>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setIsLoggedIn(false)}>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => {
+                void (async () => {
+                  try {
+                    await setIsLoggedIn(false)
+                  } catch (e) {
+                    toast.error('Could not sign out', {
+                      description: e instanceof Error ? e.message : 'Try again.',
+                    })
+                    return
+                  }
+                  router.replace('/dashboard')
+                })()
+              }}
+            >
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>

@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,6 +17,7 @@ interface LoginScreenProps {
 }
 
 export function LoginScreen({ onLogin }: LoginScreenProps) {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -67,6 +69,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       if (data.session) {
         toast.success('Logged in successfully')
         onLogin()
+        router.replace('/dashboard')
       }
     } catch (error) {
       console.error('Auth error:', error)

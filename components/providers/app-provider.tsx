@@ -93,6 +93,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setViewAsState(v)
   }, [])
 
+  const resetClientAuthState = useCallback(() => {
+    userIdRef.current = null
+    setIsLoggedIn(false)
+    setProfileState(null)
+    realProfileRef.current = null
+    setSessionAccount(null)
+    setViewAsState(null)
+    setCalls([])
+    setPatients([])
+    setSequences([])
+    setCallbackTasks([])
+    setScheduledCheckIns([])
+    setActivityEvents([])
+    setAgentConfig(initialState.agentConfig)
+  }, [])
+
   // Use ref to prevent concurrent executions of checkDueItems
   const isProcessingRef = useRef(false)
   const userIdRef = useRef<string | null>(null)
@@ -183,18 +199,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (!isLikelyAbortError(e)) console.error('loadInitialData after sign-in:', e)
         }
       } else if (event === 'SIGNED_OUT') {
-        userIdRef.current = null
-        setIsLoggedIn(false)
-        setProfile(null)
-        setSessionAccount(null)
-        // Clear all data
-        setCalls([])
-        setPatients([])
-        setSequences([])
-        setCallbackTasks([])
-        setScheduledCheckIns([])
-        setActivityEvents([])
-        setAgentConfig(initialState.agentConfig)
+        resetClientAuthState()
       } else if (event === 'TOKEN_REFRESHED') {
         // Token refreshed successfully, no action needed
         // Don't reload data on token refresh to avoid unnecessary lag
@@ -204,7 +209,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [])
+  }, [resetClientAuthState])
 
   // Load initial data from Supabase
   const loadInitialData = async (userId: string) => {
@@ -759,16 +764,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return call
   }
 
-  // Persist login state
   const handleSetIsLoggedIn = async (value: boolean) => {
     if (!value) {
-      await supabase.auth.signOut()
-      setIsLoggedIn(false)
-      setProfile(null)
-      setSessionAccount(null)
-      userIdRef.current = null
+      try {
+        const { error } = await supabase.auth.signOut({ scope: 'global' })
+        if (error) throw error
+      } catch (e) {
+        console.warn('[Vocalis] signOut failed; clearing local session', e)
+        await clearLocalSupabaseSession()
+      }
+      resetClientAuthState()
+      return
     }
-    // Sign in is handled by login screen
+    setIsLoggedIn(true)
   }
 
   // Calculate KPI data dynamically from calls
