@@ -58,6 +58,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const isHydratedRef = useRef(false)
+  isHydratedRef.current = isHydrated
   const [profile, setProfileState] = useState<ProfileSnapshot | null>(null)
 
   const setProfile = useCallback(
@@ -119,18 +121,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('unhandledrejection', onUnhandledRejection)
   }, [])
 
+  /** Last-resort unlock if anything above fails to flip `isHydrated` (Strict Mode + async race, throttled timers, etc.). */
+  useEffect(() => {
+    const ABSOLUTE_MAX_MS = 32_000
+    const t = window.setTimeout(() => {
+      if (!isHydratedRef.current) {
+        console.warn(
+          '[Vocalis] Auth UI still locked after deadline — forcing hydrate. If you are signed in but see the login screen, refresh once.',
+        )
+        setIsHydrated(true)
+        setIsLoading(false)
+      }
+    }, ABSOLUTE_MAX_MS)
+    return () => window.clearTimeout(t)
+  }, [])
+
   // Check Supabase session on mount
   useEffect(() => {
-    let cancelled = false
     let bootstrapFinished = false
     /**
-     * Bound only `getSession()` — not the whole bootstrap. A short global timer falsely fired on slow
-     * networks / token refresh (>12s) and scared users; a hung `getSession()` still needs a ceiling.
+     * Bound only `getSession()` — not the whole bootstrap. A hung `getSession()` still needs a ceiling.
+     * `finishBootstrap` must not consult an effect `cancelled` flag: Strict Mode runs cleanup before the
+     * first async `checkSession` completes, which would skip `setIsHydrated(true)` and trap the UI on "Loading…".
      */
     const GET_SESSION_TIMEOUT_MS = 28_000
 
     const finishBootstrap = () => {
-      if (cancelled || bootstrapFinished) return
+      if (bootstrapFinished) return
       bootstrapFinished = true
       setIsHydrated(true)
       setIsLoading(false)
@@ -224,7 +241,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
 
     return () => {
-      cancelled = true
       subscription.unsubscribe()
     }
   }, [])
