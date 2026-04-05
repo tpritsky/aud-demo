@@ -123,28 +123,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     let bootstrapFinished = false
-    /** If `getSession()` never settles (stale cache, IndexedDB lock, bad network), `finally` never runs — AppShell stays on "Loading…" forever. */
-    const BOOTSTRAP_TIMEOUT_MS = 12_000
+    /**
+     * Bound only `getSession()` — not the whole bootstrap. A short global timer falsely fired on slow
+     * networks / token refresh (>12s) and scared users; a hung `getSession()` still needs a ceiling.
+     */
+    const GET_SESSION_TIMEOUT_MS = 28_000
 
     const finishBootstrap = () => {
       if (cancelled || bootstrapFinished) return
       bootstrapFinished = true
-      window.clearTimeout(safetyTimer)
       setIsHydrated(true)
       setIsLoading(false)
     }
 
-    const safetyTimer = window.setTimeout(() => {
-      if (cancelled || bootstrapFinished) return
-      console.warn(
-        '[Vocalis] Auth bootstrap timed out — unblocking the UI. After a deploy, try a hard refresh (empty cache) or clear site data if this keeps happening.',
-      )
-      finishBootstrap()
-    }, BOOTSTRAP_TIMEOUT_MS)
-
     const checkSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession()
+        const sessionOutcome = await Promise.race([
+          supabase.auth.getSession().then((result) => ({ kind: 'ok' as const, result })),
+          new Promise<{ kind: 'timeout' }>((resolve) =>
+            setTimeout(() => resolve({ kind: 'timeout' }), GET_SESSION_TIMEOUT_MS),
+          ),
+        ])
+
+        if (sessionOutcome.kind === 'timeout') {
+          // Rare: stalled storage, extension, or network. Unblock UI as signed-out; onAuthStateChange may still recover.
+          console.info(
+            '[Vocalis] Session check exceeded time limit — showing signed-out state. Refresh or clear site data if you should be signed in.',
+          )
+          setIsLoggedIn(false)
+          return
+        }
+
+        const { data: { session }, error } = sessionOutcome.result
 
         if (error && isRefreshTokenAuthError(error)) {
           console.warn('Session refresh failed; clearing local session:', error.message)
@@ -215,7 +225,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true
-      window.clearTimeout(safetyTimer)
       subscription.unsubscribe()
     }
   }, [])
