@@ -121,6 +121,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Check Supabase session on mount
   useEffect(() => {
+    let cancelled = false
+    let bootstrapFinished = false
+    /** If `getSession()` never settles (stale cache, IndexedDB lock, bad network), `finally` never runs — AppShell stays on "Loading…" forever. */
+    const BOOTSTRAP_TIMEOUT_MS = 12_000
+
+    const finishBootstrap = () => {
+      if (cancelled || bootstrapFinished) return
+      bootstrapFinished = true
+      window.clearTimeout(safetyTimer)
+      setIsHydrated(true)
+      setIsLoading(false)
+    }
+
+    const safetyTimer = window.setTimeout(() => {
+      if (cancelled || bootstrapFinished) return
+      console.warn(
+        '[Vocalis] Auth bootstrap timed out — unblocking the UI. After a deploy, try a hard refresh (empty cache) or clear site data if this keeps happening.',
+      )
+      finishBootstrap()
+    }, BOOTSTRAP_TIMEOUT_MS)
+
     const checkSession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession()
@@ -129,11 +150,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           console.warn('Session refresh failed; clearing local session:', error.message)
           await clearLocalSupabaseSession()
           setIsLoggedIn(false)
-          setIsHydrated(true)
-          setIsLoading(false)
           return
         }
-        
+
         if (session?.user) {
           userIdRef.current = session.user.id
           setIsLoggedIn(true)
@@ -156,13 +175,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setIsLoggedIn(false)
         }
       } finally {
-        setIsHydrated(true)
-        setIsLoading(false)
+        finishBootstrap()
       }
     }
 
     void checkSession().catch((e: unknown) => {
       if (!isLikelyAbortError(e)) console.error('checkSession:', e)
+      finishBootstrap()
     })
 
     // Listen for auth changes
@@ -195,6 +214,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
 
     return () => {
+      cancelled = true
+      window.clearTimeout(safetyTimer)
       subscription.unsubscribe()
     }
   }, [])
