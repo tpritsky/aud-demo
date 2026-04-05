@@ -2,16 +2,10 @@
 
 import { createBrowserClient } from '@supabase/ssr'
 import { Database } from '@/lib/db/types'
-import { supabasePublishableKey } from '@/lib/supabase/publishable-key'
+import { getPublicSupabaseAnonKey, getPublicSupabaseUrl } from '@/lib/supabase/env'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = supabasePublishableKey()
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Missing NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY)'
-  )
-}
+const supabaseUrl = getPublicSupabaseUrl()
+const supabaseAnonKey = getPublicSupabaseAnonKey()
 
 /**
  * Default Supabase auth uses `navigator.locks` + an AbortSignal timeout (@supabase/auth-js locks.ts).

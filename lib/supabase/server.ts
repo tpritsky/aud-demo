@@ -1,13 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import { supabasePublishableKey } from '@/lib/supabase/publishable-key'
+import { getPublicSupabaseAnonKey, getPublicSupabaseUrl } from '@/lib/supabase/env'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!supabaseUrl) {
-  throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
-}
 
 /**
  * Create a Supabase client for server-side operations
@@ -15,10 +10,11 @@ if (!supabaseUrl) {
  * Use this for API routes that need full access
  */
 export function createServerClient() {
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error('Missing Supabase environment variables')
+  const supabaseUrl = getPublicSupabaseUrl()
+  if (!supabaseServiceRoleKey) {
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable')
   }
-  
+
   return createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
       autoRefreshToken: false,
@@ -33,12 +29,8 @@ export function createServerClient() {
  * Use this for server components and API routes that need user context
  */
 export async function createServerClientWithUser() {
-  const supabaseAnonKey = supabasePublishableKey()
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error(
-      'Missing NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY (with NEXT_PUBLIC_SUPABASE_URL)'
-    )
-  }
+  const supabaseUrl = getPublicSupabaseUrl()
+  const supabaseAnonKey = getPublicSupabaseAnonKey()
 
   const cookieStore = await cookies()
   const supabase = createClient(supabaseUrl, supabaseAnonKey, {
