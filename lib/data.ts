@@ -858,7 +858,31 @@ export const defaultAgentConfig: AgentConfig = {
   },
 }
 
+/**
+ * Live app shell before real clinic settings load: no demo clinic name or template ElevenLabs IDs.
+ * (Avoids showing “Harmony Hearing Clinic” to every signed-in user who has no agent_config row yet.)
+ */
+export const bootstrapAgentConfig: AgentConfig = {
+  clinicName: '',
+  phoneNumber: '',
+  hoursOpen: defaultAgentConfig.hoursOpen,
+  hoursClose: defaultAgentConfig.hoursClose,
+  voiceStyle: 'neutral',
+  speechSpeed: 1.0,
+  allowedIntents: { ...defaultAgentConfig.allowedIntents },
+  escalationRules: { ...defaultAgentConfig.escalationRules },
+  callbackSettings: { ...defaultAgentConfig.callbackSettings },
+}
+
 // KPI Data
+export const zeroKpiData: KPIData = {
+  callsToday: 0,
+  missedCallsPrevented: 0,
+  appointmentsBooked: 0,
+  proactiveCheckInsCompleted: 0,
+  escalationsCreated: 0,
+}
+
 export const mockKPIData: KPIData = {
   callsToday: 12,
   missedCallsPrevented: 8,

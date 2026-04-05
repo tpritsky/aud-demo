@@ -81,7 +81,9 @@ export function SidebarNav() {
         <div className="min-w-0 flex flex-col">
           <span className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground">Vocalis</span>
           <span className="truncate text-xs text-muted-foreground">
-            {isSuperAdmin ? 'Super Admin' : agentConfig.clinicName}
+            {isSuperAdmin
+              ? 'Super Admin'
+              : agentConfig.clinicName.trim() || 'Your clinic'}
           </span>
         </div>
       </div>

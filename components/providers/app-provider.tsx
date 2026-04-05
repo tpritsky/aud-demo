@@ -40,6 +40,7 @@ import * as dbUtils from '@/lib/db/utils'
 import { toast } from 'sonner'
 import { fetchWithTimeout, isLikelyAbortError } from '@/lib/utils'
 import { clinicOnboardingIncomplete } from '@/lib/clinic-call-ai'
+import { bootstrapAgentConfig } from '@/lib/data'
 
 type ProfileSnapshot = {
   role: 'super_admin' | 'admin' | 'member'
@@ -325,6 +326,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      if (!role) {
+        toast.error('Account not provisioned', {
+          description: 'Your login is not linked to an organization. You have been signed out.',
+        })
+        try {
+          const { error } = await supabase.auth.signOut({ scope: 'global' })
+          if (error) throw error
+        } catch {
+          await clearLocalSupabaseSession()
+        }
+        resetClientAuthState()
+        if (typeof window !== 'undefined') {
+          window.location.replace('/')
+        }
+        return
+      }
+
       let needsClinicOnboarding = false
       if (role && role !== 'super_admin' && clinicId) {
         if (onboardingFromApi !== null) {
@@ -407,6 +425,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setAgentConfig(clinicAgentConfig)
       } else if (configData.status === 'fulfilled' && configData.value) {
         setAgentConfig(configData.value)
+      } else {
+        let clinicName = ''
+        if (clinicId) {
+          const { data: cn } = await supabase.from('clinics').select('name').eq('id', clinicId).maybeSingle()
+          const raw = cn && typeof (cn as { name?: unknown }).name === 'string' ? (cn as { name: string }).name : ''
+          clinicName = raw.trim()
+        }
+        setAgentConfig({ ...bootstrapAgentConfig, clinicName })
       }
     } catch (error: unknown) {
       if (isLikelyAbortError(error)) {
@@ -803,9 +829,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     return {
       callsToday,
-      missedCallsPrevented: initialState.kpiData.missedCallsPrevented,
+      missedCallsPrevented: 0,
       appointmentsBooked,
-      proactiveCheckInsCompleted: initialState.kpiData.proactiveCheckInsCompleted,
+      proactiveCheckInsCompleted: 0,
       escalationsCreated,
     }
   }, [calls])

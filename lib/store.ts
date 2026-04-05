@@ -13,13 +13,8 @@ import {
   type ProfileRole,
 } from './types'
 import {
-  mockCalls,
-  mockPatients,
-  mockProactiveSequences,
-  mockCallbackTasks,
-  mockActivityEvents,
-  defaultAgentConfig,
-  mockKPIData,
+  bootstrapAgentConfig,
+  zeroKpiData,
 } from './data'
 
 export interface AppState {
@@ -77,14 +72,14 @@ export interface AppActions {
 export type AppStore = AppState & AppActions
 
 export const initialState: AppState = {
-  calls: mockCalls,
-  patients: mockPatients,
-  sequences: mockProactiveSequences,
-  callbackTasks: mockCallbackTasks,
+  calls: [],
+  patients: [],
+  sequences: [],
+  callbackTasks: [],
   scheduledCheckIns: [],
-  activityEvents: mockActivityEvents,
-  agentConfig: defaultAgentConfig,
-  kpiData: mockKPIData,
+  activityEvents: [],
+  agentConfig: bootstrapAgentConfig,
+  kpiData: zeroKpiData,
   isLoggedIn: false,
   isHydrated: false,
   profile: null,
