@@ -123,8 +123,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /** Last-resort unlock if anything above fails to flip `isHydrated` (Strict Mode + async race, throttled timers, etc.). */
   useEffect(() => {
-    /** Must exceed primary + retry `getSession` races below (slow networks / token refresh). */
-    const ABSOLUTE_MAX_MS = 72_000
+    /** Slightly longer than all `getSession` races + local clear below. */
+    const ABSOLUTE_MAX_MS = 22_000
     const t = window.setTimeout(() => {
       if (!isHydratedRef.current) {
         console.warn(
@@ -141,13 +141,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let bootstrapFinished = false
     /**
-     * Bound only `getSession()` — not the whole bootstrap. A hung `getSession()` still needs a ceiling.
-     * `finishBootstrap` must not consult an effect `cancelled` flag: Strict Mode runs cleanup before the
-     * first async `checkSession` completes, which would skip `setIsHydrated(true)` and trap the UI on "Loading…".
+     * Short races + clear stale browser auth (typical after deploy / cache skew). Not meant to wait on slow networks.
+     * `finishBootstrap` must not consult an effect `cancelled` flag (Strict Mode loading trap).
      */
-    /** First attempt; token refresh on slow networks can exceed shorter limits. */
-    const GET_SESSION_TIMEOUT_MS = 42_000
-    const GET_SESSION_RETRY_MS = 22_000
+    const SESSION_RACE_MS = 6_000
+    const SESSION_RETRY_MS = 5_000
 
     const finishBootstrap = () => {
       if (bootstrapFinished) return
@@ -169,9 +167,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        let sessionOutcome = await raceGetSession(GET_SESSION_TIMEOUT_MS)
+        let sessionOutcome = await raceGetSession(SESSION_RACE_MS)
         if (sessionOutcome.kind === 'timeout') {
-          sessionOutcome = await raceGetSession(GET_SESSION_RETRY_MS)
+          sessionOutcome = await raceGetSession(SESSION_RETRY_MS)
+        }
+        if (sessionOutcome.kind === 'timeout') {
+          await clearLocalSupabaseSession()
+          sessionOutcome = await raceGetSession(SESSION_RETRY_MS)
         }
 
         if (sessionOutcome.kind === 'timeout') {
