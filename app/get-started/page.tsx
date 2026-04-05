@@ -1,38 +1,137 @@
 'use client'
 
+import { Suspense, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { ArrowRight } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import { useAppStore } from '@/lib/store'
+import { ClinicSetupWizard } from '@/components/onboarding/clinic-setup-wizard'
+
+function GetStartedContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const setupClinicId = searchParams.get('clinicId')?.trim() ?? null
+  const { isHydrated, isLoggedIn, profile, setProfile } = useAppStore()
+
+  useEffect(() => {
+    if (!isHydrated) return
+    if (!isLoggedIn) {
+      const q = searchParams.toString()
+      router.replace(q ? `/dashboard?${q}` : '/dashboard')
+      return
+    }
+    if (profile?.role === 'super_admin' && !setupClinicId) {
+      router.replace('/dashboard')
+      return
+    }
+    if (profile?.role === 'super_admin' && setupClinicId) return
+    if (profile && !profile.clinicId) return
+    if (profile && !profile.needsClinicOnboarding) {
+      router.replace('/dashboard')
+    }
+  }, [isHydrated, isLoggedIn, profile, router, setupClinicId, searchParams])
+
+  if (!isHydrated) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50/80 gap-3">
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    )
+  }
+
+  if (isLoggedIn && profile?.role === 'super_admin' && setupClinicId) {
+    return (
+      <div className="min-h-screen bg-zinc-50/80">
+        <header className="border-b border-zinc-200/80 bg-white/90 backdrop-blur">
+          <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:h-16">
+            <span className="text-sm font-semibold text-foreground">Vocalis</span>
+            <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" asChild>
+              <Link href="/businesses">Back to businesses</Link>
+            </Button>
+          </div>
+        </header>
+        <ClinicSetupWizard superAdminClinicId={setupClinicId} onDone={() => {}} />
+      </div>
+    )
+  }
+
+  if (isLoggedIn && profile?.role === 'super_admin' && !setupClinicId) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50/80 gap-3">
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+      </div>
+    )
+  }
+
+  if (isLoggedIn && profile?.clinicId && profile.needsClinicOnboarding) {
+    return (
+      <div className="min-h-screen bg-zinc-50/80">
+        <header className="border-b border-zinc-200/80 bg-white/90 backdrop-blur">
+          <div className="mx-auto flex h-14 max-w-5xl items-center px-4 sm:h-16">
+            <span className="text-sm font-semibold text-foreground">Vocalis</span>
+          </div>
+        </header>
+        <ClinicSetupWizard
+          onDone={() => {
+            if (profile) setProfile({ ...profile, needsClinicOnboarding: false })
+          }}
+        />
+      </div>
+    )
+  }
+
+  if (isLoggedIn && profile && !profile.clinicId) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="border-b border-border/40 bg-background/95 backdrop-blur">
+          <div className="container mx-auto flex h-14 items-center px-4 sm:h-16 lg:px-8">
+            <span className="text-sm font-semibold text-foreground">Vocalis</span>
+          </div>
+        </header>
+        <main className="flex-1 flex flex-col items-center justify-center p-6">
+          <div className="w-full max-w-md space-y-4 text-center">
+            <h1 className="text-2xl font-bold tracking-tight">No business linked yet</h1>
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Your account is not assigned to a clinic. Ask your administrator to invite you or assign you to a business.
+            </p>
+            <Button asChild variant="outline" className="rounded-xl">
+              <Link href="/dashboard">Go to dashboard</Link>
+            </Button>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
+  if (isLoggedIn) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50/80">
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50/80 gap-3">
+      <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+      <p className="text-sm text-muted-foreground">Redirecting…</p>
+    </div>
+  )
+}
 
 export default function GetStartedPage() {
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b border-border/40 bg-background/95 backdrop-blur">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4 lg:px-8">
-          <Link href="/" className="text-sm font-medium text-muted-foreground hover:text-foreground">
-            ← Home
-          </Link>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50/80 gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+          <p className="text-sm text-muted-foreground">Loading…</p>
         </div>
-      </header>
-
-      <main className="flex-1 flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-sm space-y-8 text-center">
-          <div className="space-y-3">
-            <h1 className="text-3xl font-bold tracking-tight">Sign in</h1>
-            <p className="text-muted-foreground text-[15px] leading-relaxed">
-              Continue to the dashboard and sign in with the email and password from your invite or administrator.
-              Access is invitation-only—there is no public signup.
-            </p>
-          </div>
-
-          <Button asChild size="lg" className="w-full gap-2 text-base h-12">
-            <Link href="/dashboard" prefetch={false}>
-              Continue to dashboard
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
-        </div>
-      </main>
-    </div>
+      }
+    >
+      <GetStartedContent />
+    </Suspense>
   )
 }

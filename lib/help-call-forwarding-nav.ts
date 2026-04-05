@@ -1,0 +1,36 @@
+/** In-page anchors for /help/call-forwarding (must match h3 `id`s on that page). */
+export const MOBILE_PROVIDER_ANCHORS = [
+  { label: 'Verizon', id: 'verizon' },
+  { label: 'AT&T', id: 'att' },
+  { label: 'T-Mobile', id: 't-mobile' },
+  { label: 'Sprint', id: 'sprint' },
+  { label: 'Boost Mobile', id: 'boost-mobile' },
+  { label: 'Mint Mobile', id: 'mint-mobile' },
+  { label: 'Cricket Wireless', id: 'cricket-wireless' },
+  { label: 'Consumer Cellular', id: 'consumer-cellular' },
+  { label: 'Xfinity Mobile', id: 'xfinity-mobile' },
+] as const
+
+export const WEB_VOIP_ANCHORS = [
+  { label: 'RingCentral', id: 'ringcentral' },
+  { label: 'Weave', id: 'weave' },
+  { label: 'Google Voice', id: 'google-voice' },
+  { label: 'Vonage', id: 'vonage' },
+  { label: 'Dialpad', id: 'dialpad' },
+  { label: 'Quo (OpenPhone)', id: 'quo-openphone' },
+  { label: 'Nextiva', id: 'nextiva' },
+  { label: '8x8', id: 'eight-by-eight' },
+  { label: 'Grasshopper', id: 'grasshopper' },
+  { label: 'Zoom Phone', id: 'zoom-phone' },
+  { label: 'Cisco Webex Calling', id: 'cisco-webex-calling' },
+  { label: 'GoTo Connect', id: 'goto-connect' },
+  { label: 'Ooma Office', id: 'ooma-office' },
+  { label: 'magicJack for Business', id: 'magicjack-for-business' },
+  { label: 'Avaya Office Cloud', id: 'avaya-cloud-office' },
+  { label: 'Microsoft Teams Phone', id: 'microsoft-teams-phone' },
+  { label: 'GoDaddy Conversations', id: 'godaddy-conversations' },
+  { label: 'Freedom Mobile', id: 'freedom-mobile' },
+  { label: 'Rogers', id: 'rogers' },
+  { label: 'Bell', id: 'bell' },
+  { label: 'Verizon OneTalk', id: 'verizon-onetalk' },
+] as const

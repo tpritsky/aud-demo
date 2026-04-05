@@ -10,12 +10,14 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { X } from 'lucide-react'
-import { CallIntent, CallOutcome } from '@/lib/types'
+import { CallDirection, CallIntent, CallOutcome } from '@/lib/types'
 
 export interface CallFilters {
   intent: CallIntent | 'all'
   outcome: CallOutcome | 'all'
   escalated: 'all' | 'yes' | 'no'
+  direction: CallDirection | 'all'
+  minUrgency: 'all' | '1' | '2' | '3' | '4'
   search: string
 }
 
@@ -50,6 +52,8 @@ export function CallFiltersComponent({ filters, onFiltersChange }: CallFiltersPr
     filters.intent !== 'all' ||
     filters.outcome !== 'all' ||
     filters.escalated !== 'all' ||
+    filters.direction !== 'all' ||
+    filters.minUrgency !== 'all' ||
     filters.search !== ''
 
   const clearFilters = () => {
@@ -57,6 +61,8 @@ export function CallFiltersComponent({ filters, onFiltersChange }: CallFiltersPr
       intent: 'all',
       outcome: 'all',
       escalated: 'all',
+      direction: 'all',
+      minUrgency: 'all',
       search: '',
     })
   }
@@ -64,10 +70,10 @@ export function CallFiltersComponent({ filters, onFiltersChange }: CallFiltersPr
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:flex-wrap">
       <Input
-        placeholder="Search calls..."
+        placeholder="Search name, phone, summary, transcript, AI…"
         value={filters.search}
         onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-        className="w-full sm:w-64"
+        className="w-full sm:w-72"
       />
 
       <Select
@@ -119,6 +125,41 @@ export function CallFiltersComponent({ filters, onFiltersChange }: CallFiltersPr
           <SelectItem value="all">All</SelectItem>
           <SelectItem value="yes">Escalated</SelectItem>
           <SelectItem value="no">Not Escalated</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={filters.direction}
+        onValueChange={(value) =>
+          onFiltersChange({ ...filters, direction: value as CallDirection | 'all' })
+        }
+      >
+        <SelectTrigger className="w-full sm:w-40">
+          <SelectValue placeholder="Direction" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Any direction</SelectItem>
+          <SelectItem value="inbound">Inbound</SelectItem>
+          <SelectItem value="outbound">Outbound</SelectItem>
+          <SelectItem value="unknown">Unknown</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={filters.minUrgency}
+        onValueChange={(value) =>
+          onFiltersChange({ ...filters, minUrgency: value as CallFilters['minUrgency'] })
+        }
+      >
+        <SelectTrigger className="w-full sm:w-44">
+          <SelectValue placeholder="Min urgency" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Any urgency</SelectItem>
+          <SelectItem value="4">P4+</SelectItem>
+          <SelectItem value="3">P3+</SelectItem>
+          <SelectItem value="2">P2+</SelectItem>
+          <SelectItem value="1">P1+</SelectItem>
         </SelectContent>
       </Select>
 

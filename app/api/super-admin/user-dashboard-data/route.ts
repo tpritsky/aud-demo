@@ -7,6 +7,12 @@ import * as dbActivityEvents from '@/lib/db/activity-events'
 import * as dbAgentConfig from '@/lib/db/agent-config'
 import * as dbUtils from '@/lib/db/utils'
 import type { CallRow } from '@/lib/db/types'
+import { normalizeVertical, parseClinicSettingsBlob } from '@/lib/clinic-call-ai'
+import type { AgentConfig } from '@/lib/types'
+import {
+  clinicAgentConfigEnrichmentChanged,
+  enrichClinicSettingsAgentConfig,
+} from '@/lib/server/elevenlabs-line-phone'
 
 /**
  * GET /api/super-admin/user-dashboard-data?userId=xxx
@@ -93,14 +99,38 @@ export async function GET(request: NextRequest) {
       return (data || []).map((row) => dbUtils.dbCallToApp(row as CallRow))
     }
 
-    const [patients, callsData, tasksData, checkInsData, eventsData, config] = await Promise.all([
+    const [patients, callsData, tasksData, checkInsData, eventsData] = await Promise.all([
       dbPatients.getPatients(supabase, targetUserId).catch(() => []),
       callsForTarget().catch(() => []),
       dbCallbackTasks.getCallbackTasks(supabase, targetUserId).catch(() => []),
       dbScheduledCheckIns.getScheduledCheckIns(supabase, targetUserId).catch(() => []),
       dbActivityEvents.getActivityEvents(supabase, targetUserId, 50).catch(() => []),
-      dbAgentConfig.getAgentConfig(supabase, targetUserId),
     ])
+
+    let agentCfg: AgentConfig | null = null
+    if (p.clinic_id) {
+      const { data: crow } = await supabase.from('clinics').select('settings').eq('id', p.clinic_id).maybeSingle()
+      let settingsObj: Record<string, unknown> =
+        crow?.settings && typeof crow.settings === 'object'
+          ? { ...(crow.settings as Record<string, unknown>) }
+          : {}
+      const beforeEnrich = { ...settingsObj }
+      const enriched = await enrichClinicSettingsAgentConfig(
+        settingsObj,
+        normalizeVertical(clinic?.vertical)
+      )
+      if (clinicAgentConfigEnrichmentChanged(beforeEnrich, enriched)) {
+        const { error: healErr } = await supabase
+          .from('clinics')
+          .update({ settings: enriched })
+          .eq('id', p.clinic_id)
+        if (!healErr) settingsObj = enriched
+      }
+      agentCfg = parseClinicSettingsBlob(settingsObj).agentConfig ?? null
+    }
+    if (!agentCfg) {
+      agentCfg = await dbAgentConfig.getAgentConfig(supabase, targetUserId).catch(() => null)
+    }
 
     return NextResponse.json({
       profile: { role: p.role as 'admin' | 'member', clinicId: p.clinic_id },
@@ -111,7 +141,7 @@ export async function GET(request: NextRequest) {
       callbackTasks: tasksData,
       scheduledCheckIns: checkInsData,
       activityEvents: eventsData,
-      agentConfig: config ?? null,
+      agentConfig: agentCfg,
     })
   } catch (e) {
     console.error('user-dashboard-data error:', e)

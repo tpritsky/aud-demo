@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ALLOWED_CLINIC_VERTICALS, normalizeVertical, parseClinicSettingsBlob } from '@/lib/clinic-call-ai'
+import { mergeClinicSettingsPayload } from '@/lib/merge-clinic-settings'
 import { createServerClient } from '@/lib/supabase/server'
+import { ensureConvaiInboundLineAssignedToClinicAgent } from '@/lib/server/elevenlabs-assign-phone'
+import { enrichClinicSettingsAgentConfig } from '@/lib/server/elevenlabs-line-phone'
 
 function requireSuperAdmin(request: NextRequest) {
   const authHeader = request.headers.get('Authorization')
@@ -98,10 +102,35 @@ export async function PATCH(
     const updates: { name?: string; vertical?: string; settings?: unknown } = {}
 
     if (typeof body.name === 'string' && body.name.trim()) updates.name = body.name.trim()
-    if (typeof body.vertical === 'string' && ['audiology', 'ortho', 'law', 'general'].includes(body.vertical)) {
+    if (
+      typeof body.vertical === 'string' &&
+      ALLOWED_CLINIC_VERTICALS.includes(body.vertical as (typeof ALLOWED_CLINIC_VERTICALS)[number])
+    ) {
       updates.vertical = body.vertical
     }
-    if (body.settings !== undefined && typeof body.settings === 'object') updates.settings = body.settings
+    if (body.settings !== undefined && typeof body.settings === 'object') {
+      const { data: existing } = await supabase
+        .from('clinics')
+        .select('settings, vertical')
+        .eq('id', clinicId)
+        .maybeSingle()
+      const prev = (existing as { settings?: unknown } | null)?.settings
+      let enrichVertical = normalizeVertical((existing as { vertical?: string } | null)?.vertical)
+      if (
+        typeof body.vertical === 'string' &&
+        ALLOWED_CLINIC_VERTICALS.includes(body.vertical as (typeof ALLOWED_CLINIC_VERTICALS)[number])
+      ) {
+        enrichVertical = normalizeVertical(body.vertical)
+      }
+      let merged = mergeClinicSettingsPayload(prev, body.settings) as Record<string, unknown>
+      const elKey = process.env.ELEVENLABS_API_KEY?.trim()
+      if (elKey) {
+        const { agentConfig } = parseClinicSettingsBlob(merged)
+        await ensureConvaiInboundLineAssignedToClinicAgent(elKey, agentConfig ?? null)
+      }
+      merged = await enrichClinicSettingsAgentConfig(merged, enrichVertical)
+      updates.settings = merged
+    }
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No valid updates' }, { status: 400 })

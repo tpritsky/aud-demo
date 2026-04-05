@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { clinicOnboardingIncomplete } from '@/lib/clinic-call-ai'
 
 /**
  * GET /api/profile
@@ -43,11 +44,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ role: null, clinicId: null, email: r.email ?? null, fullName: r.full_name ?? null })
     }
 
+    let needsClinicOnboarding = false
+    if (role !== 'super_admin' && r.clinic_id) {
+      const { data: clinicRow } = await supabase
+        .from('clinics')
+        .select('settings')
+        .eq('id', r.clinic_id)
+        .maybeSingle()
+      needsClinicOnboarding = clinicOnboardingIncomplete(
+        (clinicRow as { settings?: unknown } | null)?.settings
+      )
+    }
+
     return NextResponse.json({
       role,
       clinicId: r.clinic_id ?? null,
       email: r.email ?? user.email ?? null,
       fullName: r.full_name ?? null,
+      needsClinicOnboarding,
     })
   } catch (e) {
     console.error('Profile API error:', e)

@@ -7,6 +7,7 @@ import { KPICards } from '@/components/dashboard/kpi-cards'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { HighRiskPatients } from '@/components/dashboard/high-risk-patients'
 import { CreateSequenceDialog } from '@/components/dashboard/create-sequence-dialog'
+import { ReceptionistCallHero } from '@/components/dashboard/receptionist-call-hero'
 import { useAppStore } from '@/lib/store'
 import { supabase } from '@/lib/supabase/client'
 import { defaultAgentConfig } from '@/lib/data'
@@ -16,6 +17,7 @@ function DashboardContent() {
   const viewAsUserId = searchParams.get('viewAs')
   const {
     profile,
+    sessionAccount,
     viewAs,
     setProfile,
     setPatients,
@@ -30,7 +32,9 @@ function DashboardContent() {
   if (!viewAsUserId && viewAsLoadedRef.current) viewAsLoadedRef.current = null
 
   useEffect(() => {
-    if (!viewAsUserId || profile?.role !== 'super_admin' || viewAsLoadedRef.current === viewAsUserId) return
+    // Use real signed-in role: after load, `profile` is swapped to the target and would block re-fetch.
+    if (!viewAsUserId || sessionAccount?.role !== 'super_admin' || viewAsLoadedRef.current === viewAsUserId)
+      return
     viewAsLoadedRef.current = viewAsUserId
     const run = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -52,11 +56,24 @@ function DashboardContent() {
       setViewAs({ userId: viewAsUserId, displayName })
     }
     run()
-  }, [viewAsUserId, profile?.role, setProfile, setPatients, setCalls, setCallbackTasks, setScheduledCheckIns, setActivityEvents, setAgentConfig, setViewAs])
+  }, [
+    viewAsUserId,
+    sessionAccount?.role,
+    setProfile,
+    setPatients,
+    setCalls,
+    setCallbackTasks,
+    setScheduledCheckIns,
+    setActivityEvents,
+    setAgentConfig,
+    setViewAs,
+  ])
 
   return (
     <AppShell title="Dashboard">
       <div className="space-y-6">
+        <ReceptionistCallHero />
+
         {/* KPI Cards */}
         <KPICards />
 

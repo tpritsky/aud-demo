@@ -48,7 +48,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to load users' }, { status: 500 })
     }
 
-    return NextResponse.json({ users: profiles || [] })
+    const list = profiles || []
+    const clinicIds = [...new Set(list.map((p) => (p as { clinic_id?: string | null }).clinic_id).filter(Boolean))] as string[]
+
+    let nameByClinicId: Record<string, string> = {}
+    if (clinicIds.length > 0) {
+      const { data: clinics } = await supabase.from('clinics').select('id, name').in('id', clinicIds)
+      nameByClinicId = Object.fromEntries((clinics || []).map((c) => [c.id, c.name]))
+    }
+
+    const users = list.map((p) => {
+      const row = p as {
+        id: string
+        email: string
+        full_name: string | null
+        role: string
+        clinic_id: string | null
+      }
+      const assignments =
+        row.clinic_id != null && row.clinic_id !== ''
+          ? [
+              {
+                clinicId: row.clinic_id,
+                clinicName: nameByClinicId[row.clinic_id] || 'Unknown business',
+                role: row.role,
+              },
+            ]
+          : []
+      return { ...row, clinicAssignments: assignments }
+    })
+
+    return NextResponse.json({ users })
   } catch (e) {
     console.error('Super-admin users error:', e)
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })

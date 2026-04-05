@@ -1,5 +1,11 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { postProcessCallTranscript } from '@/lib/ai/call-post-process'
+import {
+  buildClaudeCallContext,
+  mergeCallAiSettings,
+  normalizeVertical,
+  parseClinicSettingsBlob,
+} from '@/lib/clinic-call-ai'
 
 /**
  * Service-role job: load call by id, run Claude, persist AI columns.
@@ -55,13 +61,25 @@ export async function runCallPostProcessJob(callId: string): Promise<void> {
   const row = claimed as { id: string; transcript: string | null; clinic_id: string | null }
 
   let clinicName: string | undefined
+  let extraClinicContext: string | undefined
   if (row.clinic_id) {
-    const { data: clinic } = await supabase.from('clinics').select('name').eq('id', row.clinic_id).maybeSingle()
-    clinicName = (clinic as { name?: string } | null)?.name ?? undefined
+    const { data: clinic } = await supabase
+      .from('clinics')
+      .select('name, vertical, settings')
+      .eq('id', row.clinic_id)
+      .maybeSingle()
+    if (clinic) {
+      const c = clinic as { name?: string; vertical?: string; settings?: unknown }
+      clinicName = c.name ?? undefined
+      const vertical = normalizeVertical(c.vertical)
+      const { callAi: partialAi } = parseClinicSettingsBlob(c.settings)
+      const callAi = mergeCallAiSettings(vertical, partialAi)
+      extraClinicContext = buildClaudeCallContext({ clinicName, vertical, callAi })
+    }
   }
 
   try {
-    const result = await postProcessCallTranscript(row.transcript || '', { clinicName })
+    const result = await postProcessCallTranscript(row.transcript || '', { clinicName, extraClinicContext })
     await supabase
       .from('calls')
       .update({

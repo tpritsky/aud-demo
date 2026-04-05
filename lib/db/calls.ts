@@ -105,6 +105,7 @@ export async function updateCall(
   if (updates.transcript !== undefined) updateData.transcript = updates.transcript
   if (updates.entities !== undefined) updateData.entities = updates.entities as unknown as Record<string, unknown>
   if (updates.clinicId !== undefined) updateData.clinic_id = updates.clinicId
+  if (updates.callDirection !== undefined) updateData.call_direction = updates.callDirection
   if (updates.aiProcessingStatus !== undefined) updateData.ai_processing_status = updates.aiProcessingStatus
   if (updates.aiBriefSummary !== undefined) updateData.ai_brief_summary = updates.aiBriefSummary
   if (updates.aiCallerName !== undefined) updateData.ai_caller_name = updates.aiCallerName

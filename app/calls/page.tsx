@@ -2,6 +2,7 @@
 
 import { AppShell } from '@/components/layout/app-shell'
 import { CallsTable } from '@/components/calls/calls-table'
+import { ScheduledOutboundPanel } from '@/components/calls/scheduled-outbound-panel'
 
 export default function CallsPage() {
   return (
@@ -13,6 +14,7 @@ export default function CallsPage() {
             View and manage all incoming and outgoing calls handled by the AI agent.
           </p>
         </div>
+        <ScheduledOutboundPanel />
         <CallsTable />
       </div>
     </AppShell>

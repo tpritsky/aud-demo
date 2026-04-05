@@ -13,7 +13,6 @@ import {
   Phone,
   Calendar,
   UserCheck,
-  Clock,
   ArrowRight,
   Mic,
   CheckCircle2,
@@ -69,21 +68,27 @@ export default function OrthoLandingPage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4 lg:px-8">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+        <div className="container mx-auto flex h-14 items-center justify-between gap-2 px-4 sm:h-16 lg:px-8">
+          <Link href="/" className="flex min-w-0 items-center gap-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary">
               <Mic className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="text-lg font-semibold">AudioAssist AI</span>
+            <span className="truncate text-base font-semibold tracking-tight sm:text-lg">Vocalis</span>
           </Link>
-          <nav className="flex items-center gap-6">
-            <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
+          <nav className="flex shrink-0 items-center gap-2 sm:gap-4">
+            <Link
+              href="/"
+              className="text-xs text-muted-foreground transition-colors hover:text-foreground sm:text-sm whitespace-nowrap"
+            >
               Audiology
             </Link>
-            <Button asChild size="default" className="shadow-lg">
-              <Link href="/get-started">
-                Get started
-                <ArrowRight className="ml-2 h-4 w-4" />
+            <Button
+              asChild
+              className="h-9 gap-1.5 px-3 text-sm shadow-lg sm:h-10 sm:px-4 sm:text-base sm:gap-2"
+            >
+              <Link href="/dashboard">
+                <span>Sign in</span>
+                <ArrowRight className="h-4 w-4 sm:ml-0.5" />
               </Link>
             </Button>
           </nav>
@@ -106,7 +111,7 @@ export default function OrthoLandingPage() {
                 <Link href="#demo">Request a demo</Link>
               </Button>
               <Button size="lg" variant="outline" asChild>
-                <Link href="/get-started">Get started</Link>
+                <Link href="/dashboard">Sign in</Link>
               </Button>
             </div>
           </div>
@@ -487,7 +492,7 @@ export default function OrthoLandingPage() {
               </Button>
             </form>
             <p className="mt-6 text-center text-sm text-muted-foreground">
-              Or <Link href="/get-started" className="text-primary underline">get started</Link> now.
+              Or <Link href="/dashboard" className="text-primary underline">sign in</Link> now.
             </p>
           </div>
         </div>
@@ -495,10 +500,12 @@ export default function OrthoLandingPage() {
 
       <footer className="border-t py-8">
         <div className="container mx-auto px-4 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">← Back to home</Link>
+          <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
+            ← Sign in
+          </Link>
           <div className="flex items-center gap-6">
             <Link href="/ortho" className="text-sm text-muted-foreground hover:text-foreground">For Ortho</Link>
-            <Link href="/get-started" className="text-sm text-muted-foreground hover:text-foreground">Get started</Link>
+            <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">Sign in</Link>
           </div>
         </div>
       </footer>

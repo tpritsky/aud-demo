@@ -112,7 +112,7 @@ export function CreateSequenceDialog() {
         </DialogFooter>
         <p className="text-xs text-muted-foreground text-center">
           After creating, configure detailed steps in{' '}
-          <Link href="/settings" className="text-primary hover:underline">
+          <Link href="/settings/check-ins" className="text-primary hover:underline">
             Settings &rarr; Proactive Check-ins
           </Link>
         </p>

@@ -1,0 +1,113 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@/lib/supabase/server'
+import {
+  mergeCallAiSettings,
+  normalizeVertical,
+  parseClinicSettingsBlob,
+} from '@/lib/clinic-call-ai'
+import { getElevenLabsSyncTargets } from '@/lib/elevenlabs-placeholders'
+import { syncElevenLabsAgentPrompt } from '@/lib/server/elevenlabs-prompt-sync'
+
+function bearer(request: NextRequest): string | null {
+  return request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') || null
+}
+
+/**
+ * POST /api/clinic/sync-elevenlabs
+ * Admin only: push inbound + outbound playbook text into ElevenLabs agent system prompts
+ * (managed block delimiters; merges with existing prompt).
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const token = bearer(request)
+    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const supabase = createServerClient()
+    const { data: { user }, error: uErr } = await supabase.auth.getUser(token)
+    if (uErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('clinic_id, role')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    const clinicId = (profile as { clinic_id?: string | null })?.clinic_id
+    const role = (profile as { role?: string })?.role
+    if (!clinicId) {
+      return NextResponse.json({ error: 'No clinic assigned' }, { status: 400 })
+    }
+    if (role !== 'admin' && role !== 'super_admin') {
+      return NextResponse.json({ error: 'Only clinic administrators can sync ElevenLabs prompts' }, { status: 403 })
+    }
+
+    const apiKey = process.env.ELEVENLABS_API_KEY
+    if (!apiKey) {
+      return NextResponse.json({ error: 'ELEVENLABS_API_KEY not configured' }, { status: 500 })
+    }
+
+    const { data: clinic, error: cErr } = await supabase
+      .from('clinics')
+      .select('vertical, settings')
+      .eq('id', clinicId)
+      .maybeSingle()
+
+    if (cErr || !clinic) return NextResponse.json({ error: 'Clinic not found' }, { status: 404 })
+
+    const vertical = normalizeVertical((clinic as { vertical?: string }).vertical)
+    const { agentConfig, callAi: partialAi } = parseClinicSettingsBlob((clinic as { settings?: unknown }).settings)
+    const callAi = mergeCallAiSettings(vertical, partialAi)
+
+    const { targets, skippedDemoIds } = getElevenLabsSyncTargets(agentConfig ?? null)
+
+    if (targets.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            skippedDemoIds.length > 0
+              ? 'This clinic still has demo ElevenLabs agent IDs. Finish onboarding so real agents are created, or paste your ConvAI agent IDs under Agent settings, then push again.'
+              : 'No ElevenLabs agent IDs in clinic settings (set inbound and/or outbound agent ID)',
+          results: skippedDemoIds.map((agentId) => ({
+            agentId,
+            ok: false,
+            error:
+              'Demo/template agent ID from the app defaults — not an agent in your workspace. Replace it with your provisioned agent.',
+          })),
+        },
+        { status: 400 }
+      )
+    }
+
+    const results: { agentId: string; ok: boolean; error?: string }[] = []
+    for (const agentId of targets) {
+      const r = await syncElevenLabsAgentPrompt({
+        agentId,
+        apiKey,
+        vertical,
+        callAi,
+        speechSpeed: agentConfig?.speechSpeed,
+      })
+      results.push(r.ok ? { agentId, ok: true } : { agentId, ok: false, error: r.error })
+    }
+
+    const failed = results.filter((r) => !r.ok)
+    if (failed.length === results.length) {
+      return NextResponse.json(
+        { error: 'All agent syncs failed', results },
+        { status: 502 }
+      )
+    }
+
+    return NextResponse.json({
+      ok: true,
+      message:
+        failed.length > 0
+          ? 'Some agents synced; check results for errors'
+          : 'ElevenLabs prompts updated',
+      results,
+    })
+  } catch (e) {
+    console.error('POST /api/clinic/sync-elevenlabs', e)
+    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
+  }
+}

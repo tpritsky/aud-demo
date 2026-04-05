@@ -71,10 +71,11 @@ async function ensureUser(email, full_name) {
   const { data: existing } = await supabase.auth.admin.listUsers()
   const found = existing?.users?.find((u) => u.email === email)
   if (found) {
-    await supabase.from('profiles').upsert(
-      { id: found.id, email, full_name, updated_at: new Date().toISOString() },
-      { onConflict: 'id' }
-    )
+    // Update only name/email — avoid upsert patterns that can leave role admin without clinic_id
+    await supabase
+      .from('profiles')
+      .update({ email, full_name, updated_at: new Date().toISOString() })
+      .eq('id', found.id)
     return found.id
   }
   const { data: created, error } = await supabase.auth.admin.createUser({

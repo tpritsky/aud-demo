@@ -1,0 +1,22 @@
+/** Common IANA timezones for clinic scheduling UIs (not exhaustive). */
+export const COMMON_TIMEZONES: readonly string[] = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Phoenix',
+  'America/Los_Angeles',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+  'America/Toronto',
+  'America/Vancouver',
+  'America/Mexico_City',
+  'Europe/London',
+  'Europe/Dublin',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Australia/Sydney',
+  'Australia/Melbourne',
+  'Asia/Tokyo',
+  'Asia/Singapore',
+  'UTC',
+] as const

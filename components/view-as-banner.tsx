@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
@@ -24,19 +23,16 @@ export function ViewAsBanner() {
   }
 
   return (
-    <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-      <p className="text-sm font-medium">
-        Viewing as <strong>{viewAs.displayName}</strong>
+    <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-primary/20 bg-primary/10 px-4 py-2.5 text-foreground dark:border-primary/30 dark:bg-primary/15 dark:text-foreground lg:pl-[calc(15rem+2rem)] lg:pr-8">
+      <p className="min-w-0 flex-1 basis-full text-sm font-medium sm:basis-auto sm:flex-none">
+        <span className="block break-words">
+          Viewing as <strong className="font-semibold">{viewAs.displayName}</strong>
+        </span>
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <Link href="/businesses">
-          <Button variant="outline" size="sm" className="border-amber-300 dark:border-amber-700">
-            Super Admin
-          </Button>
-        </Link>
         <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => void handleExit()}>
           <EyeOff className="h-4 w-4" />
-          Exit view & restore my account
+          Exit View
         </Button>
       </div>
     </div>

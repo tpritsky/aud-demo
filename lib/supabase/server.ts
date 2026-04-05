@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { supabasePublishableKey } from '@/lib/supabase/publishable-key'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -32,9 +33,11 @@ export function createServerClient() {
  * Use this for server components and API routes that need user context
  */
 export async function createServerClientWithUser() {
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseAnonKey = supabasePublishableKey()
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing Supabase environment variables')
+    throw new Error(
+      'Missing NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY (with NEXT_PUBLIC_SUPABASE_URL)'
+    )
   }
 
   const cookieStore = await cookies()

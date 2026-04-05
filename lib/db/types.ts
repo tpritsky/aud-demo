@@ -108,6 +108,7 @@ export interface CallRow {
   created_at: string
   user_id: string
   clinic_id?: string | null
+  call_direction?: string
   ai_processing_status?: string
   ai_brief_summary?: string | null
   ai_caller_name?: string | null

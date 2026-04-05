@@ -33,8 +33,11 @@ export interface AppState {
   kpiData: KPIData
   isLoggedIn: boolean
   isHydrated: boolean
-  /** Current user's profile (role + clinic). Loaded when logged in; may be swapped during super_admin view-as. */
-  profile: { role: ProfileRole; clinicId: string | null } | null
+  /**
+   * Current user's profile (role + clinic). Loaded when logged in; may be swapped during super_admin view-as.
+   * `needsClinicOnboarding` is true when the clinic was created with the setup wizard pending (admins/members only).
+   */
+  profile: { role: ProfileRole; clinicId: string | null; needsClinicOnboarding?: boolean } | null
   /** Signed-in user for shell (header): name, email, real role — not swapped during view-as. */
   sessionAccount: { email: string; fullName: string | null; role: ProfileRole } | null
   /** When set, UI and data reflect this user (super_admin "view as" mode). */
@@ -64,7 +67,9 @@ export interface AppActions {
   setActivityEvents: (events: ActivityEvent[]) => void
   setAgentConfig: (config: AgentConfig) => void
   setIsLoggedIn: (value: boolean) => void
-  setProfile: (profile: { role: ProfileRole; clinicId: string | null } | null) => void
+  setProfile: (
+    profile: { role: ProfileRole; clinicId: string | null; needsClinicOnboarding?: boolean } | null
+  ) => void
   setViewAs: (viewAs: { userId: string; displayName: string } | null) => void
   clearViewAs: () => void | Promise<void>
 }

@@ -1,7 +1,11 @@
 /**
  * Apply one SQL file from supabase/migrations using .env.local.
- * Uses DIRECT_URL if set (Supabase “direct” / migrations), else DATABASE_URL.
- * (same idea as run-migration.js, but any migration file by basename).
+ * Uses DIRECT_URL if set, else DATABASE_URL.
+ *
+ * Supabase “direct” URLs (db.*.supabase.co:5432) are IPv6-only. If you see
+ * EHOSTUNREACH, set DATABASE_URL to the Session pooler string from the dashboard
+ * (Connect → Session pooler), or enable the IPv4 add-on, or paste the SQL in
+ * the Supabase SQL Editor.
  *
  * Usage:
  *   node scripts/apply-migration-by-name.js 011_calls_clinic_ai_postprocess.sql
@@ -9,7 +13,50 @@
 
 const fs = require('fs')
 const path = require('path')
+const dns = require('dns').promises
 const { Client } = require('pg')
+
+/**
+ * Supabase direct DB hosts are often IPv6-only. Node's default DNS can yield ENOTFOUND for `pg`;
+ * resolve AAAA and connect by IP, preserving TLS SNI via `ssl.servername`.
+ */
+async function clientOptionsFromUrl(connectionString) {
+  const normalized = connectionString.replace(/^postgresql:/i, 'http:')
+  let u
+  try {
+    u = new URL(normalized)
+  } catch {
+    return { connectionString, ssl: { rejectUnauthorized: false } }
+  }
+  const hostname = u.hostname
+  let resolved = hostname
+  try {
+    const v4 = await dns.resolve4(hostname)
+    if (v4 && v4[0]) resolved = v4[0]
+  } catch {
+    try {
+      const v6 = await dns.resolve6(hostname)
+      if (v6 && v6[0]) resolved = v6[0]
+    } catch {
+      /* keep hostname */
+    }
+  }
+  if (resolved === hostname) {
+    return { connectionString, ssl: { rejectUnauthorized: false } }
+  }
+  const port = parseInt(u.port || '5432', 10)
+  const user = decodeURIComponent(u.username)
+  const password = decodeURIComponent(u.password)
+  const database = (u.pathname || '/postgres').replace(/^\//, '') || 'postgres'
+  return {
+    host: resolved,
+    port,
+    user,
+    password,
+    database,
+    ssl: { rejectUnauthorized: false, servername: hostname },
+  }
+}
 
 function loadEnvLocal() {
   const envPath = path.join(__dirname, '..', '.env.local')
@@ -40,14 +87,15 @@ if (!fs.existsSync(sqlPath)) {
 loadEnvLocal()
 const databaseUrl = process.env.DIRECT_URL || process.env.DATABASE_URL
 if (!databaseUrl) {
-  console.error('Missing DIRECT_URL or DATABASE_URL in .env.local.')
+  console.error('Missing DIRECT_URL or DATABASE_URL in .env.local (or pass DATABASE_URL in the environment).')
   process.exit(1)
 }
 
 const sql = fs.readFileSync(sqlPath, 'utf8')
 
 async function run() {
-  const client = new Client({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } })
+  const opts = await clientOptionsFromUrl(databaseUrl)
+  const client = new Client(opts)
   try {
     await client.connect()
     console.log('Applying', basename, '...')

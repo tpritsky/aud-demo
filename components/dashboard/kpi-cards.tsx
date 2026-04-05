@@ -16,40 +16,30 @@ const kpiConfig = [
     title: 'Calls Today',
     icon: Phone,
     format: (v: number) => v.toString(),
-    color: 'text-primary',
-    bgColor: 'bg-primary/10',
   },
   {
     key: 'missedCallsPrevented',
     title: 'Missed Calls Prevented',
     icon: PhoneOff,
     format: (v: number) => v.toString(),
-    color: 'text-success',
-    bgColor: 'bg-success/10',
   },
   {
     key: 'appointmentsBooked',
     title: 'Appointments Booked',
     icon: Calendar,
     format: (v: number) => v.toString(),
-    color: 'text-info',
-    bgColor: 'bg-info/10',
   },
   {
     key: 'proactiveCheckInsCompleted',
     title: 'Check-ins Completed',
     icon: CheckCircle2,
     format: (v: number) => v.toString(),
-    color: 'text-primary',
-    bgColor: 'bg-primary/10',
   },
   {
     key: 'escalationsCreated',
     title: 'Escalations Created',
     icon: AlertTriangle,
     format: (v: number) => v.toString(),
-    color: 'text-warning',
-    bgColor: 'bg-warning/10',
   },
 ] as const
 
@@ -64,12 +54,17 @@ export function KPICards() {
 
         return (
           <Card key={kpi.key}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {kpi.title}
-              </CardTitle>
-              <div className={`rounded-lg p-2 ${kpi.bgColor}`}>
-                <Icon className={`h-4 w-4 ${kpi.color}`} />
+            <CardHeader className="space-y-0 pb-2">
+              <div className="flex flex-row items-center justify-between gap-3">
+                <CardTitle className="flex-1 min-w-0 text-sm font-medium leading-snug text-muted-foreground">
+                  {kpi.title}
+                </CardTitle>
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-950/50"
+                  aria-hidden
+                >
+                  <Icon className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
+                </div>
               </div>
             </CardHeader>
             <CardContent>

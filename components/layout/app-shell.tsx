@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode } from 'react'
+import { ReactNode, Suspense } from 'react'
 import { SidebarNav } from './sidebar-nav'
 import { Header } from './header'
 import { ViewAsBanner } from '@/components/view-as-banner'
@@ -18,7 +18,7 @@ export function AppShell({ children, title }: AppShellProps) {
   // Show nothing while hydrating to prevent flash
   if (!isHydrated) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-muted/30 flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
       </div>
     )
@@ -29,17 +29,19 @@ export function AppShell({ children, title }: AppShellProps) {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-muted/40">
       <ViewAsBanner />
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
-        <SidebarNav />
+        <Suspense fallback={<div className="fixed left-0 top-0 z-40 h-screen w-60 border-r border-sidebar-border bg-sidebar" />}>
+          <SidebarNav />
+        </Suspense>
       </div>
 
       {/* Main Content */}
-      <div className="lg:pl-64">
+      <div className="lg:pl-60">
         <Header title={title} />
-        <main className="p-4 lg:p-6">{children}</main>
+        <main className="mx-auto max-w-[1600px] p-4 lg:p-8">{children}</main>
       </div>
     </div>
   )

@@ -1,5 +1,8 @@
 'use client'
 
+import { Suspense } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Bell, Search, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,20 +17,33 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import { useAppStore } from '@/lib/store'
+import type { ProfileRole } from '@/lib/types'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { MobileSidebar } from './mobile-sidebar'
+import { CallReceptionistHeaderCta } from './call-receptionist-header-cta'
 
 interface HeaderProps {
   title: string
 }
 
-function roleLabel(role: 'super_admin' | 'admin' | 'member'): string {
+/** Search is only wired for patient/call hubs — hide on settings, help, onboarding, etc. */
+function shouldShowPatientCallSearch(pathname: string): boolean {
+  if (pathname === '/dashboard' || pathname === '/calls') return true
+  if (pathname.startsWith('/patients')) return true
+  return false
+}
+
+function roleLabel(role: ProfileRole): string {
   if (role === 'super_admin') return 'Super admin'
   if (role === 'admin') return 'Administrator'
   return 'Team member'
 }
 
-function initialsForAccount(fullName: string | null | undefined, email: string): string {
+function initialsForAccount(
+  fullName: string | null | undefined,
+  email: string,
+  role: ProfileRole
+): string {
   const n = fullName?.trim()
   if (n) {
     const parts = n.split(/\s+/).filter(Boolean)
@@ -38,11 +54,14 @@ function initialsForAccount(fullName: string | null | undefined, email: string):
       return parts[0].slice(0, 2).toUpperCase()
     }
   }
+  if (role === 'super_admin') return 'SA'
   const local = email.split('@')[0] || email
   return local.slice(0, 2).toUpperCase()
 }
 
 export function Header({ title }: HeaderProps) {
+  const pathname = usePathname() || ''
+  const showSearch = shouldShowPatientCallSearch(pathname)
   const { callbackTasks, setIsLoggedIn, sessionAccount } = useAppStore()
   const pendingTasks = callbackTasks.filter((t) => {
     // Derive status from attempts
@@ -52,8 +71,8 @@ export function Header({ title }: HeaderProps) {
   }).length
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background px-4 lg:px-6">
-      <div className="flex items-center gap-4">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border/80 bg-card/90 px-4 backdrop-blur-md supports-[backdrop-filter]:bg-card/75 lg:px-8">
+      <div className="flex min-w-0 shrink-0 items-center gap-4">
         <Sheet>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="lg:hidden">
@@ -62,20 +81,27 @@ export function Header({ title }: HeaderProps) {
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-64 p-0">
-            <MobileSidebar />
+            <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading menu…</div>}>
+              <MobileSidebar />
+            </Suspense>
           </SheetContent>
         </Sheet>
-        <h1 className="text-xl font-semibold">{title}</h1>
+        <h1 className="text-lg font-semibold tracking-tight text-foreground">{title}</h1>
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="relative hidden md:block">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search patients, calls..."
-            className="w-64 pl-9"
-          />
-        </div>
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3 md:gap-4">
+        {showSearch ? (
+          <div className="relative hidden min-w-0 md:block">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search patients, calls..."
+              className="w-52 pl-9 lg:w-64"
+              aria-label="Search patients and calls"
+            />
+          </div>
+        ) : null}
+
+        <CallReceptionistHeaderCta />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -123,7 +149,7 @@ export function Header({ title }: HeaderProps) {
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-primary text-primary-foreground text-sm">
                   {sessionAccount
-                    ? initialsForAccount(sessionAccount.fullName, sessionAccount.email)
+                    ? initialsForAccount(sessionAccount.fullName, sessionAccount.email, sessionAccount.role)
                     : '…'}
                 </AvatarFallback>
               </Avatar>
@@ -142,6 +168,9 @@ export function Header({ title }: HeaderProps) {
               ) : null}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/settings/account">Account</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setIsLoggedIn(false)}>
               Sign out
             </DropdownMenuItem>

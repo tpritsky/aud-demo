@@ -53,7 +53,7 @@ export function ActivityFeed() {
   return (
     <Card className="h-full">
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base font-semibold">Today&apos;s Activity</CardTitle>
+        <CardTitle className="text-base font-semibold">Recent activity</CardTitle>
         {pendingTasksCount > 0 && (
           <Button variant="ghost" size="sm" asChild className="text-xs">
             <Link href="/tasks">
@@ -66,7 +66,7 @@ export function ActivityFeed() {
       <CardContent className="space-y-4">
         {recentEvents.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">
-            No activity yet today
+            No recent activity
           </p>
         ) : (
           <div className="space-y-4">

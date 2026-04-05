@@ -234,7 +234,10 @@ function transformElevenLabsCall(webhook: ElevenLabsWebhook): Call {
   const metadata = data.metadata || {}
   const analysis = data.analysis || {}
   const phoneCall = metadata.phone_call || {}
-  
+  const dirRaw = typeof phoneCall.direction === 'string' ? phoneCall.direction.toLowerCase() : ''
+  const callDirection: Call['callDirection'] =
+    dirRaw === 'inbound' || dirRaw === 'outbound' ? dirRaw : 'unknown'
+
   // Generate call_id from conversation_id or create one
   const callId = data.conversation_id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   
@@ -295,6 +298,7 @@ function transformElevenLabsCall(webhook: ElevenLabsWebhook): Call {
     entities: {
       phone: fromNumber,
     },
+    callDirection,
   }
 }
 
@@ -605,7 +609,8 @@ export async function POST(request: NextRequest) {
         summary: call.summary,
         transcript: call.transcript,
         entities: call.entities,
-        clinicId: existingCall.clinicId ?? ownerClinicId,
+        clinicId: ownerClinicId ?? existingCall.clinicId ?? null,
+        callDirection: call.callDirection ?? existingCall.callDirection,
       }
       await dbCalls.updateCall(supabase, call.id, updates, userId)
       console.log('Call updated successfully:', call.id)

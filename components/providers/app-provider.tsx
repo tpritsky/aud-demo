@@ -38,6 +38,13 @@ import * as dbAgentConfig from '@/lib/db/agent-config'
 import * as dbUtils from '@/lib/db/utils'
 import { toast } from 'sonner'
 import { isLikelyAbortError } from '@/lib/utils'
+import { clinicOnboardingIncomplete } from '@/lib/clinic-call-ai'
+
+type ProfileSnapshot = {
+  role: 'super_admin' | 'admin' | 'member'
+  clinicId: string | null
+  needsClinicOnboarding?: boolean
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [calls, setCalls] = useState<Call[]>([])
@@ -50,14 +57,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [profile, setProfile] = useState<{ role: 'super_admin' | 'admin' | 'member'; clinicId: string | null } | null>(null)
+  const [profile, setProfileState] = useState<ProfileSnapshot | null>(null)
+
+  const setProfile = useCallback(
+    (next: ProfileSnapshot | null) => {
+      if (next === null) {
+        setProfileState(null)
+        return
+      }
+      setProfileState((prev) => ({
+        role: next.role,
+        clinicId: next.clinicId,
+        needsClinicOnboarding:
+          next.needsClinicOnboarding !== undefined
+            ? next.needsClinicOnboarding
+            : (prev?.needsClinicOnboarding ?? false),
+      }))
+    },
+    []
+  )
   const [sessionAccount, setSessionAccount] = useState<{
     email: string
     fullName: string | null
     role: 'super_admin' | 'admin' | 'member'
   } | null>(null)
   const [viewAs, setViewAsState] = useState<{ userId: string; displayName: string } | null>(null)
-  const realProfileRef = useRef<{ role: 'super_admin' | 'admin' | 'member'; clinicId: string | null } | null>(null)
+  const realProfileRef = useRef<ProfileSnapshot | null>(null)
+  const viewAsRef = useRef<typeof viewAs>(null)
+  viewAsRef.current = viewAs
+  const profileRef = useRef<typeof profile>(null)
+  profileRef.current = profile
 
   const setViewAs = useCallback((v: { userId: string; displayName: string } | null) => {
     setViewAsState(v)
@@ -169,6 +198,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         fullName: string | null
         role: 'super_admin' | 'admin' | 'member'
       } | null = null
+      let onboardingFromApi: boolean | null = null
 
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -183,6 +213,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
               clinicId?: string | null
               email?: string | null
               fullName?: string | null
+              needsClinicOnboarding?: boolean
+            }
+            if (typeof data.needsClinicOnboarding === 'boolean') {
+              onboardingFromApi = data.needsClinicOnboarding
             }
             if (data.role === 'super_admin' || data.role === 'admin' || data.role === 'member') {
               role = data.role
@@ -264,13 +298,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      let needsClinicOnboarding = false
+      if (role && role !== 'super_admin' && clinicId) {
+        if (onboardingFromApi !== null) {
+          needsClinicOnboarding = onboardingFromApi
+        } else {
+          const { data: cr } = await supabase
+            .from('clinics')
+            .select('settings')
+            .eq('id', clinicId)
+            .maybeSingle()
+          needsClinicOnboarding = clinicOnboardingIncomplete(
+            (cr as { settings?: unknown } | null)?.settings
+          )
+        }
+      }
+
       if (role) {
-        const profileValue = { role, clinicId }
-        setProfile(profileValue)
+        const profileValue: ProfileSnapshot = { role, clinicId, needsClinicOnboarding }
+        setProfileState(profileValue)
         realProfileRef.current = profileValue
         setSessionAccount(sessionAcc)
       } else {
-        setProfile(null)
+        setProfileState(null)
         realProfileRef.current = null
         setSessionAccount(null)
       }
@@ -287,16 +337,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCalls(callsData)
       setIsLoading(false) // Allow UI to render while loading other data
 
-      // Load remaining data in background (incl. clinic settings when user belongs to a clinic)
+      // Prefer GET /api/clinic/settings so server can heal display phone + outbound agent id from the ConvAI line.
       const clinicSettingsPromise =
-        clinicId
-          ? supabase
-              .from('clinics')
-              .select('settings')
-              .eq('id', clinicId)
-              .single()
-              .then(({ data }) => (data as { settings?: { agentConfig?: AgentConfig } } | null)?.settings)
-          : Promise.resolve(undefined)
+        clinicId && token
+          ? fetch('/api/clinic/settings', { headers: { Authorization: `Bearer ${token}` } })
+              .then(async (res) => {
+                if (!res.ok) return null
+                const j = (await res.json()) as { agentConfig?: AgentConfig | null }
+                return j.agentConfig ?? null
+              })
+              .catch(() => null)
+          : clinicId
+            ? supabase
+                .from('clinics')
+                .select('settings')
+                .eq('id', clinicId)
+                .single()
+                .then(
+                  ({ data }) =>
+                    (data as { settings?: { agentConfig?: AgentConfig } } | null)?.settings?.agentConfig ?? null
+                )
+            : Promise.resolve(null)
 
       const [sequencesData, tasksData, checkInsData, eventsData, configData, clinicSettingsData] = await Promise.allSettled([
         dbSequences.getSequences(supabase, userId).catch(() => []),
@@ -313,7 +374,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (checkInsData.status === 'fulfilled') setScheduledCheckIns(checkInsData.value)
       if (eventsData.status === 'fulfilled') setActivityEvents(eventsData.value)
       // Prefer clinic-level agent config (set by super_admin) over user's agent_config
-      const clinicAgentConfig = clinicSettingsData.status === 'fulfilled' && clinicSettingsData.value?.agentConfig
+      const clinicAgentConfig =
+        clinicSettingsData.status === 'fulfilled' && clinicSettingsData.value ? clinicSettingsData.value : null
       if (clinicAgentConfig) {
         setAgentConfig(clinicAgentConfig)
       } else if (configData.status === 'fulfilled' && configData.value) {
@@ -335,6 +397,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const loadInitialDataRef = useRef(loadInitialData)
   loadInitialDataRef.current = loadInitialData
 
+  const refetchProfileFromApi = useCallback(async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+      const res = await fetch('/api/profile', { headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok) return
+      const data = (await res.json()) as {
+        role?: string
+        clinicId?: string | null
+        email?: string | null
+        fullName?: string | null
+        needsClinicOnboarding?: boolean
+      }
+      if (data.role !== 'super_admin' && data.role !== 'admin' && data.role !== 'member') return
+      const profileValue: ProfileSnapshot = {
+        role: data.role as 'super_admin' | 'admin' | 'member',
+        clinicId: data.clinicId ?? null,
+        needsClinicOnboarding: data.needsClinicOnboarding === true,
+      }
+      setProfileState(profileValue)
+      realProfileRef.current = profileValue
+      const email = typeof data.email === 'string' ? data.email.trim() : ''
+      if (email) {
+        setSessionAccount((prev) =>
+          prev
+            ? { ...prev, role: profileValue.role }
+            : {
+                email,
+                fullName: data.fullName ?? null,
+                role: profileValue.role,
+              }
+        )
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
   const clearViewAs = useCallback(async () => {
     setViewAsState(null)
     const uid = userIdRef.current
@@ -342,6 +445,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await loadInitialDataRef.current(uid)
     }
   }, [])
+
+  // When clinic_id / role is updated in the DB (e.g. super admin assigned a clinic), refresh the
+  // in-memory profile without requiring a full page reload. Skip while impersonating via view-as.
+  useEffect(() => {
+    if (!isLoggedIn || !userIdRef.current) return
+    const uid = userIdRef.current
+    const channel = supabase
+      .channel(`profiles-self-${uid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${uid}`,
+        },
+        () => {
+          if (viewAsRef.current) return
+          void refetchProfileFromApi()
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [isLoggedIn, refetchProfileFromApi])
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return
+      if (viewAsRef.current) return
+      const p = profileRef.current
+      if (p?.role === 'super_admin') return
+      if (p && !p.clinicId) void refetchProfileFromApi()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [refetchProfileFromApi])
 
   // Set up real-time subscriptions
   useEffect(() => {
@@ -374,7 +515,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   existing.aiBriefSummary !== call.aiBriefSummary ||
                   existing.aiResponseUrgency !== call.aiResponseUrgency ||
                   existing.aiBusinessValue !== call.aiBusinessValue ||
-                  JSON.stringify(existing.aiTags) !== JSON.stringify(call.aiTags)
+                  JSON.stringify(existing.aiTags) !== JSON.stringify(call.aiTags) ||
+                  existing.callDirection !== call.callDirection
 
                 if (hasChanges) {
                   return prev.map((c) => (c.id === call.id ? call : c))

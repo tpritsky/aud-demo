@@ -21,7 +21,7 @@ export type CallPostProcessResult = {
 
 const DEFAULT_MODEL = 'claude-haiku-4-5'
 
-const SYSTEM = `You analyze phone call transcripts for a clinic / business phone line.
+const BASE_SYSTEM = `You analyze phone call transcripts for a clinic / business phone line.
 Extract structured facts for staff triage. Be conservative: if unsure, use null for name/phone and lower scores.
 Urgency: 1=routine, 2=soon, 3=same day, 4=immediate callback.
 Business value: 1=low, 2=moderate, 3=high, 4=strategic revenue or retention risk.
@@ -107,6 +107,8 @@ export type PostProcessCallOptions = {
   model?: string
   /** Optional clinic context for better tagging */
   clinicName?: string
+  /** Merged vertical + admin “what to look for” + playbooks (from clinics.settings) */
+  extraClinicContext?: string
 }
 
 /**
@@ -131,6 +133,11 @@ export async function postProcessCallTranscript(
   const model = options.model ?? process.env.ANTHROPIC_CALL_MODEL ?? DEFAULT_MODEL
   const client = getClient()
 
+  const system =
+    options.extraClinicContext?.trim() != null && options.extraClinicContext.trim() !== ''
+      ? `${BASE_SYSTEM}\n\nClinic-specific guidance (from staff configuration):\n${options.extraClinicContext.trim()}`
+      : BASE_SYSTEM
+
   const userParts: string[] = []
   if (options.clinicName) {
     userParts.push(`Business / clinic name (for context): ${options.clinicName}`)
@@ -140,7 +147,7 @@ export async function postProcessCallTranscript(
   const message = await client.messages.create({
     model,
     max_tokens: 1024,
-    system: SYSTEM,
+    system,
     tools: [toolSchema()],
     tool_choice: { type: 'tool', name: 'submit_call_analysis' },
     messages: [{ role: 'user', content: userParts.join('\n') }],

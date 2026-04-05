@@ -1,11 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Slider } from '@/components/ui/slider'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -19,18 +18,111 @@ import { useAppStore } from '@/lib/store'
 import { toast } from 'sonner'
 import { VoiceStyle } from '@/lib/types'
 import { triggerOutboundCall, type CallDynamicVariables } from '@/lib/call-trigger'
-import { Save, Building2, Phone, Clock, Mic, Gauge, Settings2, AlertTriangle, PhoneCall, RotateCcw } from 'lucide-react'
+import { Save, Phone, Clock, Mic, Settings2, AlertTriangle, PhoneCall, RotateCcw, Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase/client'
+import { defaultAgentConfig } from '@/lib/data'
 // useToast not needed - using toast directly from sonner
 
-export function AgentConfigurationTab() {
-  const { agentConfig, setAgentConfig } = useAppStore()
+type AgentConfigurationTabProps = {
+  superAdminClinicId?: string | null
+}
+
+export function AgentConfigurationTab({ superAdminClinicId = null }: AgentConfigurationTabProps) {
+  const { agentConfig: storeAgentConfig, setAgentConfig: storeSetAgentConfig, profile } = useAppStore()
+  const isClinicEdit = Boolean(superAdminClinicId?.trim())
+  const [localAgent, setLocalAgent] = useState<typeof storeAgentConfig | null>(null)
+  const [clinicAgentStatus, setClinicAgentStatus] = useState<'idle' | 'loading' | 'error'>(
+    isClinicEdit ? 'loading' : 'idle'
+  )
+  const [clinicAgentSaving, setClinicAgentSaving] = useState(false)
+  const [clinicAgentRetryTick, setClinicAgentRetryTick] = useState(0)
+
   const [testPhone, setTestPhone] = useState('')
   const [isTestCalling, setIsTestCalling] = useState(false)
+  const memberWorkspace = profile?.role === 'member' && !isClinicEdit
+
+  useEffect(() => {
+    if (!superAdminClinicId?.trim()) {
+      setLocalAgent(null)
+      setClinicAgentStatus('idle')
+      return
+    }
+    const id = superAdminClinicId.trim()
+    let cancelled = false
+    setClinicAgentStatus('loading')
+    ;(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) throw new Error('Not signed in')
+        const res = await fetch(`/api/super-admin/businesses/${encodeURIComponent(id)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Failed to load')
+        if (cancelled) return
+        const existing = data?.business?.settings?.agentConfig
+        setLocalAgent({
+          ...defaultAgentConfig,
+          ...existing,
+          clinicName: existing?.clinicName ?? data?.business?.name ?? '',
+          phoneNumber: existing?.phoneNumber ?? '',
+        })
+        setClinicAgentStatus('idle')
+      } catch {
+        if (!cancelled) setClinicAgentStatus('error')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [superAdminClinicId, clinicAgentRetryTick])
+
+  const agentConfig = isClinicEdit ? (localAgent ?? defaultAgentConfig) : storeAgentConfig
+
+  const applyAgent = (next: typeof storeAgentConfig) => {
+    if (isClinicEdit) setLocalAgent(next)
+    else void storeSetAgentConfig(next)
+  }
 
   const outboundAgentId = agentConfig.elevenLabsOutboundAgentId || agentConfig.elevenLabsAgentId
   const canTestCall = !!outboundAgentId && !!agentConfig.elevenLabsPhoneNumberId
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isClinicEdit) {
+      const id = superAdminClinicId?.trim()
+      if (!id || !localAgent || clinicAgentStatus !== 'idle') {
+        toast.error('Still loading clinic settings')
+        return
+      }
+      setClinicAgentSaving(true)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) {
+          toast.error('Session expired')
+          return
+        }
+        const res = await fetch(`/api/super-admin/businesses/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ settings: { agentConfig: localAgent } }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Save failed')
+        toast.success('Agent settings saved', {
+          description: 'This clinic’s configuration is updated.',
+        })
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Save failed')
+      } finally {
+        setClinicAgentSaving(false)
+      }
+      return
+    }
     toast.success('Settings Saved', {
       description: 'Agent configuration has been updated successfully.',
     })
@@ -40,11 +132,11 @@ export function AgentConfigurationTab() {
     key: K,
     value: typeof agentConfig[K]
   ) => {
-    setAgentConfig({ ...agentConfig, [key]: value })
+    applyAgent({ ...agentConfig, [key]: value })
   }
 
   const updateAllowedIntents = (key: keyof typeof agentConfig.allowedIntents, value: boolean) => {
-    setAgentConfig({
+    applyAgent({
       ...agentConfig,
       allowedIntents: { ...agentConfig.allowedIntents, [key]: value },
     })
@@ -54,7 +146,7 @@ export function AgentConfigurationTab() {
     key: keyof typeof agentConfig.escalationRules,
     value: boolean
   ) => {
-    setAgentConfig({
+    applyAgent({
       ...agentConfig,
       escalationRules: { ...agentConfig.escalationRules, [key]: value },
     })
@@ -64,116 +156,59 @@ export function AgentConfigurationTab() {
     key: K,
     value: typeof agentConfig.callbackSettings[K]
   ) => {
-    setAgentConfig({
+    applyAgent({
       ...agentConfig,
       callbackSettings: { ...agentConfig.callbackSettings, [key]: value },
     })
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Clinic Information */}
+  if (isClinicEdit && clinicAgentStatus === 'loading') {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (isClinicEdit && clinicAgentStatus === 'error') {
+    return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Clinic Information
-          </CardTitle>
-          <CardDescription>
-            Basic information about your clinic that the AI agent will use.
-          </CardDescription>
+          <CardTitle>Agent</CardTitle>
+          <CardDescription>Could not load this clinic’s agent settings.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="clinic-name">Clinic Name</Label>
-              <Input
-                id="clinic-name"
-                value={agentConfig.clinicName}
-                onChange={(e) => updateConfig('clinicName', e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone-number">Phone Number</Label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="phone-number"
-                  value={agentConfig.phoneNumber}
-                  onChange={(e) => updateConfig('phoneNumber', e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="elevenlabs-agent-id">Eleven Labs Inbound Agent ID</Label>
-              <Input
-                id="elevenlabs-agent-id"
-                value={agentConfig.elevenLabsAgentId || ''}
-                onChange={(e) => updateConfig('elevenLabsAgentId', e.target.value)}
-                placeholder="agent_..."
-              />
-              <p className="text-xs text-muted-foreground">
-                Your Eleven Labs agent ID for inbound calls
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="elevenlabs-outbound-agent-id">Eleven Labs Outbound Agent ID</Label>
-              <Input
-                id="elevenlabs-outbound-agent-id"
-                value={agentConfig.elevenLabsOutboundAgentId || ''}
-                onChange={(e) => updateConfig('elevenLabsOutboundAgentId', e.target.value)}
-                placeholder="agent_..."
-              />
-              <p className="text-xs text-muted-foreground">
-                Your Eleven Labs agent ID for outbound calls (with dynamic variables support)
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="elevenlabs-phone-id">Eleven Labs Phone Number ID</Label>
-              <Input
-                id="elevenlabs-phone-id"
-                value={agentConfig.elevenLabsPhoneNumberId || ''}
-                onChange={(e) => updateConfig('elevenLabsPhoneNumberId', e.target.value)}
-                placeholder="phnum_..."
-              />
-              <p className="text-xs text-muted-foreground">
-                Your Eleven Labs phone number ID for outbound calls
-              </p>
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="hours-open">Opening Time</Label>
-              <div className="relative">
-                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="hours-open"
-                  type="time"
-                  value={agentConfig.hoursOpen}
-                  onChange={(e) => updateConfig('hoursOpen', e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="hours-close">Closing Time</Label>
-              <div className="relative">
-                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="hours-close"
-                  type="time"
-                  value={agentConfig.hoursClose}
-                  onChange={(e) => updateConfig('hoursClose', e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-          </div>
+        <CardContent>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setClinicAgentStatus('loading')
+              setClinicAgentRetryTick((n) => n + 1)
+            }}
+          >
+            Retry
+          </Button>
         </CardContent>
       </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {isClinicEdit ? (
+        <p className="text-sm rounded-lg border border-border bg-muted/30 px-3 py-2 text-muted-foreground">
+          You are editing the <strong className="text-foreground">agent configuration</strong> stored for this business.
+          Use <strong className="text-foreground">Save configuration</strong> to write changes.
+        </p>
+      ) : null}
+      {memberWorkspace ? (
+        <p className="text-sm rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-950 dark:text-amber-100">
+          <AlertTriangle className="mr-1 inline h-4 w-4 align-text-bottom" />
+          Your clinic&apos;s voice line and AI agent are set up automatically for your business. You can adjust voice style,
+          intents, and callbacks below. Business details and hours are under{' '}
+          <strong className="text-foreground">Knowledge</strong>.
+        </p>
+      ) : null}
 
       {/* Test call bot */}
       <Card>
@@ -189,7 +224,8 @@ export function AgentConfigurationTab() {
         <CardContent className="space-y-4">
           {!canTestCall ? (
             <p className="text-sm text-muted-foreground">
-              Set <strong>Eleven Labs Outbound Agent ID</strong> and <strong>Eleven Labs Phone Number ID</strong> above, then save, to enable test calls.
+              Test calls need your clinic&apos;s voice line and agent to finish provisioning (usually right after signup and
+              onboarding). If this stays disabled, contact your administrator or support.
             </p>
           ) : (
             <>
@@ -285,31 +321,6 @@ export function AgentConfigurationTab() {
                 <SelectItem value="upbeat">Upbeat - Friendly and energetic</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="speech-speed" className="flex items-center gap-2">
-                <Gauge className="h-4 w-4" />
-                Speech Speed
-              </Label>
-              <span className="text-sm text-muted-foreground">
-                {agentConfig.speechSpeed.toFixed(1)}x
-              </span>
-            </div>
-            <Slider
-              id="speech-speed"
-              value={[agentConfig.speechSpeed]}
-              onValueChange={([value]) => updateConfig('speechSpeed', value)}
-              min={0.5}
-              max={1.5}
-              step={0.1}
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Slower</span>
-              <span>Normal</span>
-              <span>Faster</span>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -546,8 +557,8 @@ export function AgentConfigurationTab() {
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={handleSave} size="lg">
-          <Save className="h-4 w-4 mr-2" />
+        <Button onClick={() => void handleSave()} size="lg" disabled={clinicAgentSaving}>
+          {clinicAgentSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
           Save Configuration
         </Button>
       </div>

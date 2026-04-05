@@ -16,12 +16,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -47,6 +41,8 @@ import {
   Mic,
   Save,
   UserPlus,
+  Link2,
+  Settings,
 } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { supabase } from '@/lib/supabase/client'
@@ -62,7 +58,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { defaultAgentConfig } from '@/lib/data'
+import { KNOWLEDGE_ITEM_BODY_MAX_CHARS } from '@/lib/clinic-call-ai'
+import { formatPhoneDisplay, normalizePhoneNumber } from '@/lib/phone-format'
 import { InviteUserDialog } from '@/components/invite-user-dialog'
+import { ConvaiLinePhoneField } from '@/components/settings/convai-line-phone-field'
 
 interface Member {
   id: string
@@ -80,12 +79,26 @@ interface Business {
   workers: Member[]
 }
 
+interface ClinicAssignment {
+  clinicId: string
+  clinicName: string
+  role: string
+}
+
 interface UserRow {
   id: string
   email: string
   full_name: string | null
   role: string
   clinic_id: string | null
+  clinicAssignments?: ClinicAssignment[]
+}
+
+function roleAtBusinessLabel(role: string): string {
+  if (role === 'admin') return 'Administrator'
+  if (role === 'member') return 'Team member'
+  if (role === 'super_admin') return 'Super admin'
+  return role
 }
 
 function getToken() {
@@ -94,13 +107,25 @@ function getToken() {
 
 export default function BusinessesPage() {
   const router = useRouter()
-  const { profile, isHydrated } = useAppStore()
+  const { profile, isHydrated, setProfile } = useAppStore()
   const [businesses, setBusinesses] = useState<Business[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
   const [loading, setLoading] = useState(true)
   const [usersLoading, setUsersLoading] = useState(false)
   const [createName, setCreateName] = useState('')
   const [createVertical, setCreateVertical] = useState('general')
+  const [createWebsiteUrl, setCreateWebsiteUrl] = useState('')
+  const [analyzingFromUrl, setAnalyzingFromUrl] = useState(false)
+  const [urlAnalysis, setUrlAnalysis] = useState<{
+    description: string | null
+    locations: string[]
+    sizeOrScaleHint: string | null
+    confidenceNotes: string | null
+    websiteUrl: string
+    knowledgeTitles: string[]
+  } | null>(null)
+  /** Seeded into clinic settings as knowledge cards when the business is created */
+  const [pendingKnowledgeFromUrl, setPendingKnowledgeFromUrl] = useState<{ title: string; body: string }[]>([])
   const [creating, setCreating] = useState(false)
   const [assignClinicId, setAssignClinicId] = useState<string>('')
   const [assigningUserId, setAssigningUserId] = useState<string | null>(null)
@@ -121,6 +146,8 @@ export default function BusinessesPage() {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
   const [businessCalls, setBusinessCalls] = useState<Call[]>([])
   const [businessCallsLoading, setBusinessCallsLoading] = useState(false)
+  const [previewClinicId, setPreviewClinicId] = useState<string>('_none')
+  const [savingPreviewClinic, setSavingPreviewClinic] = useState(false)
 
   const sortedBusinessCalls = useMemo(() => {
     const tier = (n: 1 | 2 | 3 | 4 | null | undefined) => (n == null ? 0 : n)
@@ -171,33 +198,47 @@ export default function BusinessesPage() {
   }, [detailBusiness?.id])
 
   const loadBusinesses = useCallback(async () => {
-    const token = await getToken()
-    if (!token) return
-    const res = await fetch('/api/super-admin/businesses', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) return
-    const data = await res.json()
-    setBusinesses(data.businesses || [])
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await fetch('/api/super-admin/businesses', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(typeof data.error === 'string' ? data.error : 'Failed to load businesses')
+        return
+      }
+      setBusinesses(data.businesses || [])
+    } catch (e) {
+      console.error('loadBusinesses:', e)
+      toast.error('Failed to load businesses')
+    }
   }, [])
 
   const loadUsers = useCallback(async () => {
     setUsersLoading(true)
-    const token = await getToken()
-    if (!token) {
+    try {
+      const token = await getToken()
+      if (!token) {
+        toast.error('Session expired — sign in again')
+        return
+      }
+      const res = await fetch('/api/super-admin/users', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(typeof data.error === 'string' ? data.error : 'Failed to load users')
+        return
+      }
+      setUsers(data.users || [])
+    } catch (e) {
+      console.error('loadUsers:', e)
+      toast.error('Failed to load users')
+    } finally {
       setUsersLoading(false)
-      return
     }
-    const res = await fetch('/api/super-admin/users', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) {
-      setUsersLoading(false)
-      return
-    }
-    const data = await res.json()
-    setUsers(data.users || [])
-    setUsersLoading(false)
   }, [])
 
   useEffect(() => {
@@ -212,10 +253,13 @@ export default function BusinessesPage() {
     if (profile?.role !== 'super_admin') return
     const run = async () => {
       setLoading(true)
-      await loadBusinesses()
-      setLoading(false)
+      try {
+        await loadBusinesses()
+      } finally {
+        setLoading(false)
+      }
     }
-    run()
+    void run()
   }, [profile?.role, loadBusinesses])
 
   useEffect(() => {
@@ -223,7 +267,12 @@ export default function BusinessesPage() {
     loadUsers()
   }, [profile?.role, loadUsers])
 
-  // When detail sheet opens, fetch full business with voice agent settings
+  useEffect(() => {
+    if (profile?.clinicId) setPreviewClinicId(profile.clinicId)
+    else setPreviewClinicId('_none')
+  }, [profile?.clinicId])
+
+  // When detail sheet opens, load agent config from clinic-settings (healed phone from ConvAI line) with businesses fallback
   useEffect(() => {
     if (!detailBusiness) {
       setDetailAgentConfig(null)
@@ -231,37 +280,54 @@ export default function BusinessesPage() {
     }
     let cancelled = false
     setDetailAgentConfigLoading(true)
-    getToken().then((token) => {
+    getToken().then(async (token) => {
       if (!token) return
-      fetch(`/api/super-admin/businesses/${detailBusiness.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (cancelled) return
-          const settings = data?.business?.settings
-          const existing = settings?.agentConfig
-          setDetailAgentConfig({
+      try {
+        let merged: AgentConfig | null = null
+        const cs = await fetch(
+          `/api/super-admin/clinic-settings?clinicId=${encodeURIComponent(detailBusiness.id)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        if (cs.ok) {
+          const dj = (await cs.json()) as { agentConfig?: AgentConfig | null }
+          if (dj?.agentConfig && typeof dj.agentConfig === 'object') {
+            merged = { ...defaultAgentConfig, ...dj.agentConfig }
+          }
+        }
+        if (!merged) {
+          const br = await fetch(`/api/super-admin/businesses/${detailBusiness.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          const data = br.ok ? await br.json() : null
+          const existing = data?.business?.settings?.agentConfig as AgentConfig | undefined
+          merged = {
             ...defaultAgentConfig,
             ...existing,
             clinicName: existing?.clinicName ?? detailBusiness.name,
             phoneNumber: existing?.phoneNumber ?? '',
-          })
+          }
+        }
+        if (cancelled) return
+        setDetailAgentConfig({
+          ...merged,
+          clinicName: merged.clinicName?.trim() || detailBusiness.name,
+          phoneNumber: merged.phoneNumber?.trim() || '',
         })
-        .catch(() => {
-          if (!cancelled) setDetailAgentConfig({ ...defaultAgentConfig, clinicName: detailBusiness.name, phoneNumber: '' })
-        })
-        .finally(() => {
-          if (!cancelled) setDetailAgentConfigLoading(false)
-        })
+      } catch {
+        if (!cancelled) {
+          setDetailAgentConfig({ ...defaultAgentConfig, clinicName: detailBusiness.name, phoneNumber: '' })
+        }
+      } finally {
+        if (!cancelled) setDetailAgentConfigLoading(false)
+      }
     })
     return () => {
       cancelled = true
     }
   }, [detailBusiness?.id, detailBusiness?.name])
 
-  const handleSaveVoiceAgentConfig = async () => {
-    if (!detailBusiness || !detailAgentConfig) return
+  const persistDetailVoiceConfig = async (config: AgentConfig) => {
+    if (!detailBusiness) return
     setDetailAgentConfigSaving(true)
     try {
       const token = await getToken()
@@ -275,11 +341,26 @@ export default function BusinessesPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ settings: { agentConfig: detailAgentConfig } }),
+        body: JSON.stringify({ settings: { agentConfig: config } }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || 'Failed to save')
+      }
+      const heal = await fetch(
+        `/api/super-admin/clinic-settings?clinicId=${encodeURIComponent(detailBusiness.id)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      if (heal.ok) {
+        const hj = (await heal.json()) as { agentConfig?: AgentConfig | null }
+        if (hj?.agentConfig && typeof hj.agentConfig === 'object') {
+          setDetailAgentConfig({
+            ...defaultAgentConfig,
+            ...hj.agentConfig,
+            clinicName: hj.agentConfig.clinicName?.trim() || detailBusiness.name,
+            phoneNumber: hj.agentConfig.phoneNumber?.trim() || '',
+          })
+        }
       }
       toast.success('Voice agent settings saved', {
         description: 'This clinic’s number and agent are now configured. They don’t need to set anything in Settings.',
@@ -289,6 +370,11 @@ export default function BusinessesPage() {
     } finally {
       setDetailAgentConfigSaving(false)
     }
+  }
+
+  const handleSaveVoiceAgentConfig = () => {
+    if (!detailAgentConfig) return
+    void persistDetailVoiceConfig(detailAgentConfig)
   }
 
   const handleCreateBusiness = async (e: React.FormEvent) => {
@@ -315,14 +401,106 @@ export default function BusinessesPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to create')
+      const newId = data.business?.id as string | undefined
+      if (newId && pendingKnowledgeFromUrl.length > 0) {
+        const knowledgeItems = pendingKnowledgeFromUrl.map((k, i) => ({
+          id:
+            typeof crypto !== 'undefined' && crypto.randomUUID
+              ? crypto.randomUUID()
+              : `k-${Date.now()}-${i}`,
+          title: k.title.slice(0, 200),
+          body: k.body.slice(0, KNOWLEDGE_ITEM_BODY_MAX_CHARS),
+          enabled: true,
+          sortOrder: i,
+        }))
+        const patchRes = await fetch(`/api/super-admin/businesses/${newId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            settings: { callAi: { knowledgeItems } },
+          }),
+        })
+        if (!patchRes.ok) {
+          const pj = await patchRes.json().catch(() => ({}))
+          console.warn('Could not seed knowledge:', pj)
+        }
+      }
       toast.success('Business created')
+      if (newId) {
+        router.push(`/get-started?clinicId=${encodeURIComponent(newId)}`)
+      }
       setCreateName('')
       setCreateVertical('general')
+      setCreateWebsiteUrl('')
+      setUrlAnalysis(null)
+      setPendingKnowledgeFromUrl([])
       await loadBusinesses()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create business')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const handleAnalyzeBusinessUrl = async () => {
+    if (!createWebsiteUrl.trim()) {
+      toast.error('Paste a website URL')
+      return
+    }
+    setAnalyzingFromUrl(true)
+    setUrlAnalysis(null)
+    setPendingKnowledgeFromUrl([])
+    try {
+      const token = await getToken()
+      if (!token) {
+        toast.error('Session expired')
+        return
+      }
+      const res = await fetch('/api/super-admin/analyze-business-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ url: createWebsiteUrl.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Analysis failed')
+      if (typeof data.businessName === 'string' && data.businessName.trim()) {
+        setCreateName(data.businessName.trim())
+      }
+      if (typeof data.vertical === 'string') {
+        setCreateVertical(data.vertical)
+      }
+      const rawKi = Array.isArray(data.knowledgeItems) ? data.knowledgeItems : []
+      const knowledgePairs: { title: string; body: string }[] = []
+      const knowledgeTitles: string[] = []
+      for (const row of rawKi) {
+        if (!row || typeof row !== 'object') continue
+        const o = row as Record<string, unknown>
+        const t = typeof o.title === 'string' ? o.title.trim() : ''
+        const b = typeof o.body === 'string' ? o.body.trim() : ''
+        if (!t || !b) continue
+        knowledgePairs.push({ title: t.slice(0, 200), body: b.slice(0, KNOWLEDGE_ITEM_BODY_MAX_CHARS) })
+        knowledgeTitles.push(t)
+      }
+      setPendingKnowledgeFromUrl(knowledgePairs)
+      setUrlAnalysis({
+        description: typeof data.description === 'string' ? data.description : null,
+        locations: Array.isArray(data.locations) ? data.locations : [],
+        sizeOrScaleHint: typeof data.sizeOrScaleHint === 'string' ? data.sizeOrScaleHint : null,
+        confidenceNotes: typeof data.confidenceNotes === 'string' ? data.confidenceNotes : null,
+        websiteUrl: typeof data.websiteUrl === 'string' ? data.websiteUrl : createWebsiteUrl.trim(),
+        knowledgeTitles,
+      })
+      toast.success('Prefilled from website')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Analysis failed')
+    } finally {
+      setAnalyzingFromUrl(false)
     }
   }
 
@@ -464,16 +642,47 @@ export default function BusinessesPage() {
     }
   }
 
+  const savePreviewClinic = async () => {
+    const clinicId = previewClinicId === '_none' ? null : previewClinicId
+    setSavingPreviewClinic(true)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error('Not signed in')
+      const res = await fetch('/api/super-admin/link-my-clinic', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ clinicId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to update')
+      }
+      const nextId = (data.clinicId ?? null) as string | null
+      if (profile) {
+        setProfile({ role: profile.role, clinicId: nextId })
+      }
+      toast.success(nextId ? 'Clinic linked for Settings & calls' : 'Clinic link cleared')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save')
+    } finally {
+      setSavingPreviewClinic(false)
+    }
+  }
+
   if (!isHydrated || profile?.role !== 'super_admin') {
     return null
   }
 
-  const viewAsFilteredUsers = users.filter(
-    (u) =>
-      !viewAsSearch.trim() ||
-      u.email?.toLowerCase().includes(viewAsSearch.toLowerCase()) ||
-      u.full_name?.toLowerCase().includes(viewAsSearch.toLowerCase())
-  )
+  const viewAsFilteredUsers = users.filter((u) => {
+    const q = viewAsSearch.trim().toLowerCase()
+    if (!q) return true
+    if (u.email?.toLowerCase().includes(q)) return true
+    if (u.full_name?.toLowerCase().includes(q)) return true
+    return (u.clinicAssignments || []).some((a) => a.clinicName.toLowerCase().includes(q))
+  })
 
   return (
     <AppShell title="Super Admin">
@@ -486,9 +695,59 @@ export default function BusinessesPage() {
           </p>
         </div>
 
+        {/* Super admin: link own profile to a clinic (fixes "no clinic assigned" without demoting) */}
+        <Card className="overflow-hidden border-border shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Building2 className="h-5 w-5 text-primary" />
+              Your preview clinic
+            </CardTitle>
+            <CardDescription>
+              Super admins have no clinic by default. Pick a business here so Settings → Phone &amp; summaries and
+              clinic data use that clinic. Your role stays super admin.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-2">
+              <Label>Clinic</Label>
+              <Select value={previewClinicId} onValueChange={setPreviewClinicId} disabled={loading}>
+                <SelectTrigger className="w-full sm:max-w-md">
+                  <SelectValue placeholder={loading ? 'Loading…' : 'Choose a clinic'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">No clinic (platform only)</SelectItem>
+                  {businesses.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              type="button"
+              onClick={savePreviewClinic}
+              disabled={savingPreviewClinic || loading}
+              className="shrink-0"
+            >
+              {savingPreviewClinic ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
         {/* View as user */}
-        <Card className="overflow-hidden border-primary/10 shadow-sm">
-          <CardHeader className="bg-muted/30 pb-4">
+        <Card className="overflow-hidden border-border shadow-sm">
+          <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Eye className="h-5 w-5 text-primary" />
               View as user
@@ -507,7 +766,7 @@ export default function BusinessesPage() {
                 onChange={(e) => setViewAsSearch(e.target.value)}
               />
             </div>
-            <div className="max-h-48 overflow-y-auto rounded-lg border bg-muted/20">
+            <div className="max-h-[min(24rem,50vh)] overflow-y-auto rounded-lg border border-border bg-card">
               {usersLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -520,18 +779,30 @@ export default function BusinessesPage() {
                     <li key={u.id}>
                       <Link
                         href={`/view-as/${u.id}`}
-                        className="flex items-center justify-between gap-2 rounded-md px-3 py-2.5 text-sm hover:bg-muted transition-colors"
+                        className="flex items-start justify-between gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-muted transition-colors"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-background">
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-background mt-0.5">
                             <Mail className="h-4 w-4 text-muted-foreground" />
                           </div>
-                          <div className="min-w-0">
-                            <p className="font-medium truncate">{u.full_name || u.email}</p>
-                            <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <p className="font-medium break-words">{u.full_name || u.email}</p>
+                            <p className="text-xs text-muted-foreground break-all">{u.email}</p>
+                            {u.clinicAssignments && u.clinicAssignments.length > 0 ? (
+                              <ul className="text-xs text-muted-foreground space-y-0.5 pt-0.5">
+                                {u.clinicAssignments.map((a) => (
+                                  <li key={a.clinicId} className="break-words">
+                                    <span className="text-foreground/90 font-medium">{a.clinicName}</span>
+                                    <span className="text-muted-foreground"> · {roleAtBusinessLabel(a.role)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-xs text-muted-foreground/80 italic">No business assigned</p>
+                            )}
                           </div>
                         </div>
-                        <span className="flex items-center gap-1 text-xs text-primary shrink-0">
+                        <span className="flex items-center gap-1 text-xs text-primary shrink-0 pt-1">
                           View as <ChevronRight className="h-3 w-3" />
                         </span>
                       </Link>
@@ -544,42 +815,136 @@ export default function BusinessesPage() {
         </Card>
 
         {/* Create new business */}
-        <Card className="border-primary/20 bg-gradient-to-br from-background to-muted/20 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Plus className="h-5 w-5" />
               Create new business
             </CardTitle>
             <CardDescription>
-              Add a new company. You can then assign admins from the list below.
+              Add a new company. Optionally paste their website — we&apos;ll suggest name, business type, and starter
+              knowledge from the page. Review everything, then create.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCreateBusiness} className="grid grid-cols-[200px_140px_auto] gap-x-4 gap-y-2 items-center max-w-2xl">
-              <Label htmlFor="business-name" className="row-start-1 col-start-1">Business name</Label>
-              <Label className="row-start-1 col-start-2">Vertical</Label>
-              <div className="row-start-1 col-start-3" />
-              <Input
-                id="business-name"
-                className="h-10 w-full"
-                placeholder="Acme Hearing"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-              />
-              <Select value={createVertical} onValueChange={setCreateVertical}>
-                <SelectTrigger className="h-10 w-full min-h-10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="general">General</SelectItem>
-                  <SelectItem value="audiology">Audiology</SelectItem>
-                  <SelectItem value="ortho">Ortho</SelectItem>
-                  <SelectItem value="law">Law</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button type="submit" disabled={creating} className="h-10 shrink-0">
-                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
-              </Button>
+          <CardContent className="space-y-4">
+            <div className="space-y-2 max-w-2xl">
+              <Label htmlFor="business-website-url" className="inline-flex items-center gap-2">
+                <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <span>Website URL (optional)</span>
+              </Label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                <Input
+                  id="business-website-url"
+                  className="h-10 w-full sm:flex-1 sm:min-w-0"
+                  placeholder="https://example.com"
+                  value={createWebsiteUrl}
+                  onChange={(e) => {
+                    setCreateWebsiteUrl(e.target.value)
+                    setUrlAnalysis(null)
+                    setPendingKnowledgeFromUrl([])
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="default"
+                  className="h-10 shrink-0 px-4 font-medium inline-flex items-center justify-center gap-2 leading-none"
+                  disabled={analyzingFromUrl || creating}
+                  onClick={handleAnalyzeBusinessUrl}
+                >
+                  {analyzingFromUrl ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                      Analyzing…
+                    </>
+                  ) : (
+                    'Analyze & prefill'
+                  )}
+                </Button>
+              </div>
+              {urlAnalysis ? (
+                <div className="rounded-md border border-border/80 bg-card px-3 py-2 text-sm text-muted-foreground space-y-1">
+                  {urlAnalysis.description ? <p>{urlAnalysis.description}</p> : null}
+                  {urlAnalysis.locations.length > 0 ? (
+                    <p>
+                      <span className="font-medium text-foreground/80">Locations: </span>
+                      {urlAnalysis.locations.join(', ')}
+                    </p>
+                  ) : null}
+                  {urlAnalysis.sizeOrScaleHint ? (
+                    <p>
+                      <span className="font-medium text-foreground/80">Scale: </span>
+                      {urlAnalysis.sizeOrScaleHint}
+                    </p>
+                  ) : null}
+                  {urlAnalysis.confidenceNotes ? (
+                    <p className="text-xs italic border-t border-border/60 pt-2 mt-2">
+                      {urlAnalysis.confidenceNotes}
+                    </p>
+                  ) : null}
+                  {urlAnalysis.knowledgeTitles.length > 0 ? (
+                    <div className="border-t border-border/60 pt-2 mt-2">
+                      <p className="font-medium text-foreground/80 text-xs mb-1">
+                        Phone receptionist knowledge ({urlAnalysis.knowledgeTitles.length} cards — saved when you create)
+                      </p>
+                      <ul className="text-xs list-disc pl-4 space-y-0.5">
+                        {urlAnalysis.knowledgeTitles.slice(0, 12).map((t, i) => (
+                          <li key={`${i}-${t}`}>{t}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  <p className="text-xs pt-1 truncate" title={urlAnalysis.websiteUrl}>
+                    Source: {urlAnalysis.websiteUrl}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+            <form
+              onSubmit={handleCreateBusiness}
+              className="flex max-w-2xl flex-col gap-4 sm:flex-row sm:items-end sm:gap-4"
+            >
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <Label htmlFor="business-name" className="block h-5 shrink-0 text-sm leading-5">
+                  Business name
+                </Label>
+                <Input
+                  id="business-name"
+                  className="h-10 w-full"
+                  placeholder="Acme Hearing"
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                />
+              </div>
+              <div className="flex w-full shrink-0 flex-col gap-2 sm:w-[140px]">
+                <Label htmlFor="create-vertical" className="block h-5 shrink-0 text-sm leading-5">
+                  Vertical
+                </Label>
+                <Select value={createVertical} onValueChange={setCreateVertical}>
+                  <SelectTrigger id="create-vertical" className="h-10 w-full min-h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">General</SelectItem>
+                    <SelectItem value="audiology">Audiology</SelectItem>
+                    <SelectItem value="ortho">Ortho</SelectItem>
+                    <SelectItem value="law">Law</SelectItem>
+                    <SelectItem value="hospital">Hospital / health system</SelectItem>
+                    <SelectItem value="rehab">Rehabilitation</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2 sm:shrink-0">
+                <span className="hidden h-5 text-sm leading-5 sm:block sm:invisible" aria-hidden>
+                  Action
+                </span>
+                <Button
+                  type="submit"
+                  disabled={creating}
+                  className="h-10 w-full min-w-[5.5rem] shrink-0 sm:w-auto inline-flex items-center justify-center gap-2"
+                >
+                  {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>
@@ -611,8 +976,8 @@ export default function BusinessesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="rounded-lg border bg-muted/30">
-              <p className="border-b px-3 py-2 text-sm font-medium text-muted-foreground">
+            <div className="rounded-lg border border-border bg-card">
+              <p className="border-b border-border px-3 py-2 text-sm font-medium text-muted-foreground">
                 All users — click to assign as admin
               </p>
               <div className="max-h-[280px] overflow-y-auto p-2">
@@ -625,7 +990,8 @@ export default function BusinessesPage() {
                 ) : (
                   <div className="space-y-1">
                     {users.map((u) => {
-                      const isAdmin = u.role === 'admin' && u.clinic_id
+                      const isAdminLinked = u.role === 'admin' && u.clinic_id
+                      const adminMissingClinic = u.role === 'admin' && !u.clinic_id
                       const isSuperAdmin = u.role === 'super_admin'
                       const assignedTo = businesses.find((b) => b.id === u.clinic_id)?.name
                       return (
@@ -659,7 +1025,10 @@ export default function BusinessesPage() {
                             {isSuperAdmin && (
                               <Badge variant="secondary" className="text-xs">Super Admin</Badge>
                             )}
-                            {isAdmin && !isSuperAdmin && (
+                            {adminMissingClinic && (
+                              <Badge variant="destructive" className="text-xs">Admin — no clinic link</Badge>
+                            )}
+                            {isAdminLinked && !isSuperAdmin && (
                               <span className="text-xs text-muted-foreground">
                                 → {assignedTo ?? 'Another business'}
                               </span>
@@ -736,50 +1105,94 @@ export default function BusinessesPage() {
         </div>
       </div>
 
-      {/* Company detail sheet */}
-      <Sheet
+      {/* Company detail — full-screen overlay */}
+      <Dialog
         open={!!detailBusiness}
-        onOpenChange={(open) =>
-          !open &&
-          (setDetailBusiness(null),
-          setAddAdminSearch(''),
-          setAddWorkerSearch(''),
-          setInviteDialogOpen(false))
-        }
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailBusiness(null)
+            setAddAdminSearch('')
+            setAddWorkerSearch('')
+            setInviteDialogOpen(false)
+          }
+        }}
       >
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <DialogContent
+          showCloseButton
+          className="flex h-[min(92vh,56rem)] w-[calc(100vw-1rem)] max-w-5xl translate-x-[-50%] translate-y-[-50%] flex-col gap-0 overflow-hidden border bg-background p-0 shadow-xl duration-200 sm:w-[min(100vw-2rem,64rem)] sm:max-w-none sm:rounded-xl"
+        >
           {detailBusiness && (
             <>
-              <SheetHeader className="space-y-3 pb-6 border-b">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                    <Building2 className="h-6 w-6 text-primary" />
+              <DialogHeader className="shrink-0 space-y-0 border-b border-border bg-card px-6 py-5 pr-14 text-left">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-muted">
+                    <Building2 className="h-7 w-7 text-muted-foreground" />
                   </div>
-                  <div className="min-w-0">
-                    <SheetTitle className="text-xl">{detailBusiness.name}</SheetTitle>
-                    <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <DialogTitle className="text-xl font-semibold tracking-tight sm:text-2xl">
+                      {detailBusiness.name}
+                    </DialogTitle>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <Badge variant="secondary" className="font-normal capitalize">
                         {detailBusiness.vertical}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {detailBusiness.admins.length} admin{detailBusiness.admins.length !== 1 ? 's' : ''} · {detailBusiness.workers.length} worker{detailBusiness.workers.length !== 1 ? 's' : ''}
+                      <span className="text-sm text-muted-foreground">
+                        {detailBusiness.admins.length} admin{detailBusiness.admins.length !== 1 ? 's' : ''} ·{' '}
+                        {detailBusiness.workers.length} worker{detailBusiness.workers.length !== 1 ? 's' : ''}
                       </span>
                     </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/70 pt-3 text-sm">
+                      <Phone className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
+                      <span className="font-medium text-muted-foreground">Receptionist line</span>
+                      {detailAgentConfigLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Loading phone" />
+                      ) : detailAgentConfig?.phoneNumber?.trim() ? (
+                        <a
+                          href={`tel:${normalizePhoneNumber(detailAgentConfig.phoneNumber)}`}
+                          className="font-semibold tabular-nums text-emerald-800 underline decoration-emerald-800/30 underline-offset-2 hover:decoration-emerald-800"
+                        >
+                          {formatPhoneDisplay(detailAgentConfig.phoneNumber) || detailAgentConfig.phoneNumber}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">
+                          Not set — add below or in{' '}
+                          <Link
+                            href={`/settings/agent/agent-settings?clinic=${encodeURIComponent(detailBusiness.id)}`}
+                            className="font-medium text-foreground underline"
+                            onClick={() => setDetailBusiness(null)}
+                            title="Opens Agent settings for this business (super admin)"
+                          >
+                            Agent settings
+                          </Link>
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  <Button variant="outline" size="sm" className="shrink-0 gap-2" asChild>
+                    <Link
+                      href={`/settings/agent/knowledge?clinic=${encodeURIComponent(detailBusiness.id)}`}
+                      onClick={() => setDetailBusiness(null)}
+                    >
+                      <Settings className="h-4 w-4" />
+                      Settings
+                    </Link>
+                  </Button>
                 </div>
-              </SheetHeader>
+              </DialogHeader>
 
-              <div className="py-6 space-y-8">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-6">
+                <div className="mx-auto max-w-4xl space-y-8">
                 {/* Voice agent — you set it for them */}
-                <section className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <section className="rounded-xl border border-border bg-card p-4">
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <h4 className="flex items-center gap-2 text-sm font-semibold">
-                      <Mic className="h-4 w-4 text-primary" />
-                      Voice agent & clinic number
+                      <Mic className="h-4 w-4 text-muted-foreground" />
+                      Clinic name & phone
                     </h4>
                   </div>
                   <p className="text-xs text-muted-foreground mb-4">
-                    Set this once. The clinic will see these values in the app and won’t need to configure Eleven Labs or API.
+                    Shown to callers and staff. Pick a ConvAI line from your ElevenLabs workspace, or type a number if the
+                    list is unavailable.
                   </p>
                   {detailAgentConfigLoading ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
@@ -787,54 +1200,38 @@ export default function BusinessesPage() {
                       Loading…
                     </div>
                   ) : detailAgentConfig ? (
-                    <div className="space-y-3">
-                      <div className="grid gap-2">
-                        <Label className="text-xs">Clinic name</Label>
-                        <Input
-                          value={detailAgentConfig.clinicName}
-                          onChange={(e) => setDetailAgentConfig({ ...detailAgentConfig, clinicName: e.target.value })}
-                          placeholder="e.g. Acme Hearing"
-                          className="h-9"
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label className="text-xs flex items-center gap-1.5">
-                          <Phone className="h-3.5 w-3.5" />
-                          Clinic phone number
-                        </Label>
-                        <Input
-                          value={detailAgentConfig.phoneNumber}
-                          onChange={(e) => setDetailAgentConfig({ ...detailAgentConfig, phoneNumber: e.target.value })}
-                          placeholder="+1 (555) 123-4567"
-                          className="h-9"
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label className="text-xs">Eleven Labs inbound agent ID</Label>
-                        <Input
-                          value={detailAgentConfig.elevenLabsAgentId ?? ''}
-                          onChange={(e) => setDetailAgentConfig({ ...detailAgentConfig, elevenLabsAgentId: e.target.value || undefined })}
-                          placeholder="agent_..."
-                          className="h-9 font-mono text-sm"
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label className="text-xs">Eleven Labs outbound agent ID</Label>
-                        <Input
-                          value={detailAgentConfig.elevenLabsOutboundAgentId ?? ''}
-                          onChange={(e) => setDetailAgentConfig({ ...detailAgentConfig, elevenLabsOutboundAgentId: e.target.value || undefined })}
-                          placeholder="agent_..."
-                          className="h-9 font-mono text-sm"
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label className="text-xs">Eleven Labs phone number ID</Label>
-                        <Input
-                          value={detailAgentConfig.elevenLabsPhoneNumberId ?? ''}
-                          onChange={(e) => setDetailAgentConfig({ ...detailAgentConfig, elevenLabsPhoneNumberId: e.target.value || undefined })}
-                          placeholder="phnum_..."
-                          className="h-9 font-mono text-sm"
-                        />
+                    <div className="space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-2">
+                          <Label className="text-xs">Clinic name</Label>
+                          <Input
+                            value={detailAgentConfig.clinicName}
+                            onChange={(e) => setDetailAgentConfig({ ...detailAgentConfig, clinicName: e.target.value })}
+                            placeholder="e.g. Acme Hearing"
+                            className="h-10"
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <ConvaiLinePhoneField
+                            mode="admin-select"
+                            label="Call Agent number"
+                            phonePoolClinicId={detailBusiness.id}
+                            phoneNumber={detailAgentConfig.phoneNumber}
+                            onPhoneNumberChange={(v) =>
+                              setDetailAgentConfig({ ...detailAgentConfig, phoneNumber: v })
+                            }
+                            selectedPhoneNumberId={detailAgentConfig.elevenLabsPhoneNumberId ?? ''}
+                            onSelectLine={(id, e164) => {
+                              const next: AgentConfig = {
+                                ...detailAgentConfig,
+                                elevenLabsPhoneNumberId: id,
+                                phoneNumber: e164.trim() || detailAgentConfig.phoneNumber,
+                              }
+                              setDetailAgentConfig(next)
+                              void persistDetailVoiceConfig(next)
+                            }}
+                          />
+                        </div>
                       </div>
                       <Button
                         size="sm"
@@ -843,22 +1240,22 @@ export default function BusinessesPage() {
                         disabled={detailAgentConfigSaving}
                       >
                         {detailAgentConfigSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        Save voice agent settings
+                        Save clinic name & phone
                       </Button>
                     </div>
                   ) : null}
                 </section>
 
                 {/* Invite by email */}
-                <section className="rounded-xl border bg-muted/20 p-4">
+                <section className="rounded-xl border border-border bg-card p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h4 className="flex items-center gap-2 text-sm font-semibold">
-                        <UserPlus className="h-4 w-4 text-primary" />
+                        <UserPlus className="h-4 w-4 text-muted-foreground" />
                         Invite by email
                       </h4>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Send a link to set a password. Choose name and role (admin or worker) before sending.
+                        Send a link to add a user or admin to your business.
                       </p>
                     </div>
                     <Button type="button" variant="secondary" className="shrink-0 gap-2" onClick={() => setInviteDialogOpen(true)}>
@@ -868,26 +1265,28 @@ export default function BusinessesPage() {
                   </div>
                 </section>
 
-                {/* Call logs (clinic-wide, AI triage) */}
-                <section className="rounded-xl border p-4">
-                  <div className="flex items-center justify-between gap-2 mb-3">
+                {/* Call logs (clinic-wide) */}
+                <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2 mb-3">
                     <h4 className="flex items-center gap-2 text-sm font-semibold">
-                      <Phone className="h-4 w-4 text-primary" />
+                      <Phone className="h-4 w-4 text-muted-foreground" />
                       Call logs
                     </h4>
-                    <span className="text-xs text-muted-foreground">Sorted by AI urgency, then value</span>
+                    <span className="text-xs text-muted-foreground">Sorted by urgency, then value</span>
                   </div>
                   <p className="text-xs text-muted-foreground mb-3">
-                    Inbound calls linked to this business (after migration 011). Includes Claude post-processing when configured.
+                    Inbound calls for this business. Written summaries and tags appear here when enabled for the account.
                   </p>
                   {businessCallsLoading ? (
-                    <div className="flex justify-center py-8">
+                    <div className="flex justify-center py-8 rounded-lg border border-border bg-background">
                       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                     </div>
                   ) : sortedBusinessCalls.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-4">No calls for this business yet.</p>
+                    <p className="rounded-lg border border-dashed border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
+                      No calls for this business yet.
+                    </p>
                   ) : (
-                    <div className="max-h-72 overflow-auto rounded-md border">
+                    <div className="max-h-72 overflow-auto rounded-md border border-border bg-background">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -895,7 +1294,7 @@ export default function BusinessesPage() {
                             <TableHead className="text-xs w-12">U</TableHead>
                             <TableHead className="text-xs w-12">V</TableHead>
                             <TableHead className="text-xs">Caller</TableHead>
-                            <TableHead className="text-xs hidden sm:table-cell">AI summary</TableHead>
+                            <TableHead className="text-xs hidden sm:table-cell">Summary</TableHead>
                             <TableHead className="text-xs hidden md:table-cell">Dur</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -911,7 +1310,7 @@ export default function BusinessesPage() {
                                 <div className="font-medium">{c.callerName}</div>
                                 <div className="text-muted-foreground">{c.phone}</div>
                               </TableCell>
-                              <TableCell className="text-xs text-muted-foreground max-w-[180px] hidden sm:table-cell">
+                              <TableCell className="text-xs text-muted-foreground max-w-[min(280px,40vw)] hidden sm:table-cell">
                                 <span className="line-clamp-2">{c.aiBriefSummary || '—'}</span>
                               </TableCell>
                               <TableCell className="text-xs hidden md:table-cell whitespace-nowrap">
@@ -929,7 +1328,7 @@ export default function BusinessesPage() {
                 <section>
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <h4 className="flex items-center gap-2 text-sm font-semibold">
-                      <Shield className="h-4 w-4 text-primary" />
+                      <Shield className="h-4 w-4 text-muted-foreground" />
                       Admins
                     </h4>
                   </div>
@@ -964,7 +1363,7 @@ export default function BusinessesPage() {
                       ))
                     )}
                   </div>
-                  <div className="rounded-lg border bg-muted/30 p-2">
+                  <div className="rounded-lg border border-border bg-card p-2">
                     <p className="text-xs font-medium text-muted-foreground mb-2">Add admin — search users</p>
                     <div className="relative mb-2">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1000,7 +1399,7 @@ export default function BusinessesPage() {
                 <section>
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <h4 className="flex items-center gap-2 text-sm font-semibold">
-                      <Users className="h-4 w-4 text-primary" />
+                      <Users className="h-4 w-4 text-muted-foreground" />
                       Workers
                     </h4>
                   </div>
@@ -1035,7 +1434,7 @@ export default function BusinessesPage() {
                       ))
                     )}
                   </div>
-                  <div className="rounded-lg border bg-muted/30 p-2">
+                  <div className="rounded-lg border border-border bg-card p-2">
                     <p className="text-xs font-medium text-muted-foreground mb-2">Add worker — search users</p>
                     <div className="relative mb-2">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1067,21 +1466,22 @@ export default function BusinessesPage() {
                   </div>
                 </section>
 
-                <div className="pt-4 border-t">
+                <div className="pt-2 border-t border-border">
                   <Button
                     variant="destructive"
-                    className="w-full gap-2"
+                    className="w-full max-w-md gap-2"
                     onClick={() => setDeleteConfirmBusiness(detailBusiness)}
                   >
                     <Trash2 className="h-4 w-4" />
                     Delete business
                   </Button>
                 </div>
+                </div>
               </div>
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {/* Assign admin confirmation (main list) */}
       <Dialog open={!!pendingAssignMain} onOpenChange={(open) => !open && setPendingAssignMain(null)}>
@@ -1095,7 +1495,7 @@ export default function BusinessesPage() {
               )}?
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-3">
             <Button variant="outline" onClick={() => setPendingAssignMain(null)} disabled={!!assigningUserId}>
               Cancel
             </Button>
@@ -1123,7 +1523,7 @@ export default function BusinessesPage() {
               <strong>{detailBusiness?.name}</strong>? They will no longer be a {pendingUnassign?.isAdmin ? 'admin' : 'worker'} of this business.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-3">
             <Button variant="outline" onClick={() => setPendingUnassign(null)} disabled={!!unassigningUserId}>
               Cancel
             </Button>
@@ -1144,7 +1544,7 @@ export default function BusinessesPage() {
               <strong>{detailBusiness?.name}</strong> as <strong>{pendingAssign?.role === 'admin' ? 'admin' : 'worker'}</strong>?
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-3">
             <Button variant="outline" onClick={() => setPendingAssign(null)} disabled={!!assigningRoleUserId}>
               Cancel
             </Button>
@@ -1165,7 +1565,7 @@ export default function BusinessesPage() {
               permanently. All admins and workers will be unassigned from this business. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-3">
             <Button variant="outline" onClick={() => setDeleteConfirmBusiness(null)} disabled={deleting}>
               Cancel
             </Button>

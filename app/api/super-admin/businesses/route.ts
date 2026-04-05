@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { ALLOWED_CLINIC_VERTICALS } from '@/lib/clinic-call-ai'
 
 export interface BusinessMember {
   id: string
@@ -131,9 +132,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const name = typeof body.name === 'string' ? body.name.trim() : ''
-    const vertical = typeof body.vertical === 'string' && ['audiology', 'ortho', 'law', 'general'].includes(body.vertical)
-      ? body.vertical
-      : 'general'
+    const vertical =
+      typeof body.vertical === 'string' && ALLOWED_CLINIC_VERTICALS.includes(body.vertical as (typeof ALLOWED_CLINIC_VERTICALS)[number])
+        ? body.vertical
+        : 'general'
 
     if (!name) {
       return NextResponse.json({ error: 'Business name is required' }, { status: 400 })
@@ -141,7 +143,11 @@ export async function POST(request: NextRequest) {
 
     const { data: clinic, error: insertError } = await supabase
       .from('clinics')
-      .insert({ name, vertical })
+      .insert({
+        name,
+        vertical,
+        settings: { onboarding: { completed: false, version: 1 } },
+      })
       .select('id, name, vertical, created_at')
       .single()
 

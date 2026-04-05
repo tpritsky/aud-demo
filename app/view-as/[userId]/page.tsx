@@ -122,16 +122,16 @@ export default function ViewAsPage() {
           </Card>
         ) : data ? (
           <>
-            <Card className="overflow-hidden">
-              <div className="bg-muted/50 px-6 py-4">
+            <Card className="gap-0 overflow-hidden border-border py-0">
+              <div className="border-b border-border px-6 py-4 pt-5">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Viewing as</p>
                 <p className="mt-1 text-xl font-semibold">{data.user.full_name || data.user.email}</p>
                 <p className="text-sm text-muted-foreground">{data.user.email}</p>
               </div>
-              <CardContent className="pt-6 space-y-4">
+              <CardContent className="space-y-4 px-6 pb-5 pt-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                    <User className="h-5 w-5 text-primary" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                    <User className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <div>
                     <p className="font-medium">Role</p>
@@ -140,8 +140,8 @@ export default function ViewAsPage() {
                 </div>
                 {data.clinic ? (
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                      <Building2 className="h-5 w-5 text-primary" />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                      <Building2 className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
                       <p className="font-medium">Business</p>

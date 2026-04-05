@@ -64,7 +64,7 @@ export function DeleteAccountSection() {
   }
 
   return (
-    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 space-y-4">
+    <div className="rounded-lg border border-destructive/18 bg-destructive/[0.04] dark:border-destructive/25 dark:bg-destructive/10 p-6 space-y-4">
       <div>
         <h3 className="text-lg font-semibold text-destructive">Delete account</h3>
         <p className="text-sm text-muted-foreground mt-1">
@@ -95,7 +95,7 @@ export function DeleteAccountSection() {
               autoComplete="off"
             />
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-3">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={busy}>
               Cancel
             </Button>
