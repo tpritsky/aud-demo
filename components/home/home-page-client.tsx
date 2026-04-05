@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AudiologyLanding } from '@/components/marketing/audiology-landing'
 import { supabase } from '@/lib/supabase/client'
@@ -11,7 +10,6 @@ import { supabase } from '@/lib/supabase/client'
 export function HomePageClient() {
   const router = useRouter()
   const [authError, setAuthError] = useState<string | null>(null)
-  const [showLanding, setShowLanding] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -57,11 +55,9 @@ export function HomePageClient() {
         if (cancelled) return
         if (session) {
           router.replace('/dashboard')
-          return
         }
-        if (!cancelled) setShowLanding(true)
       } catch {
-        if (!cancelled) setShowLanding(true)
+        // Stay on marketing site; do not block the page on session
       }
     }
 
@@ -103,15 +99,6 @@ export function HomePageClient() {
           When you have a valid invite, open the link from your email again, or use Sign in if you already set a
           password.
         </main>
-      </div>
-    )
-  }
-
-  if (!showLanding) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4 p-6">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden />
-        <p className="text-sm text-muted-foreground">Loading…</p>
       </div>
     )
   }

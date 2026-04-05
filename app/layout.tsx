@@ -5,6 +5,7 @@ import "./globals.css";
 import { AppProvider } from "@/components/providers/app-provider";
 import { ClinicOnboardingGate } from "@/components/onboarding/clinic-onboarding-gate";
 import { Toaster } from "@/components/ui/sonner";
+import { VocalisClientBootProbe } from "@/components/vocalis-client-boot-probe";
 
 /** Avoid CDN / browser serving stale HTML that references old `_next/static` chunks after deploy. */
 export const dynamic = "force-dynamic";
@@ -65,6 +66,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AppProvider>
+          <VocalisClientBootProbe />
           <ClinicOnboardingGate>{children}</ClinicOnboardingGate>
           <Toaster />
         </AppProvider>
