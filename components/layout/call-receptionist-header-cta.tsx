@@ -7,6 +7,7 @@ import { useAppStore } from '@/lib/store'
 import { formatPhoneDisplay, normalizePhoneNumber } from '@/lib/phone-format'
 import { isPlaceholderOrMissingElevenLabsAgentId } from '@/lib/elevenlabs-placeholders'
 import { Button } from '@/components/ui/button'
+import { DEFAULT_AGENT_SECTION, slugFromAgentSection } from '@/lib/settings-agent-sections'
 
 const EXCLUDED = new Set(['/dashboard', '/businesses'])
 
@@ -56,7 +57,10 @@ export function CallReceptionistHeaderCta() {
           title="Web call — agent settings"
           asChild
         >
-          <Link href="/settings/agent" aria-label="Web call — open agent settings">
+          <Link
+            href={`/settings/agent/${slugFromAgentSection(DEFAULT_AGENT_SECTION)}`}
+            aria-label="Web call — open agent settings"
+          >
             <Globe className="h-4 w-4" />
           </Link>
         </Button>

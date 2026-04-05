@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -18,12 +17,12 @@ import {
   CalendarClock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { useAppStore } from '@/lib/store'
 import { SheetClose } from '@/components/ui/sheet'
 import {
   AGENT_SECTION_SLUGS,
   AGENT_SUBNAV_LABELS,
+  DEFAULT_AGENT_SECTION,
   slugFromAgentSection,
 } from '@/lib/settings-agent-sections'
 
@@ -44,12 +43,6 @@ export function MobileSidebar() {
   })()
   const { agentConfig, setIsLoggedIn, profile } = useAppStore()
   const isSuperAdmin = profile?.role === 'super_admin'
-
-  const [agentOpen, setAgentOpen] = useState(false)
-  useEffect(() => {
-    if (pathname.startsWith('/settings/agent')) setAgentOpen(true)
-    else setAgentOpen(false)
-  }, [pathname])
 
   const filteredMain = mainItems.filter((item) => {
     if ('adminOnly' in item && item.adminOnly) return profile?.role === 'admin'
@@ -74,6 +67,8 @@ export function MobileSidebar() {
 
   const phoneHref = `/settings/phone-summaries${clinicSuffix}`
   const checkInsHref = `/settings/check-ins${clinicSuffix}`
+  const agentRootHref = `/settings/agent/${slugFromAgentSection(DEFAULT_AGENT_SECTION)}${clinicSuffix}`
+  const onAgentBranch = pathname.startsWith('/settings/agent')
 
   return (
     <div className="flex h-full flex-col bg-sidebar">
@@ -116,24 +111,14 @@ export function MobileSidebar() {
           }
         )}
 
-        <Collapsible open={agentOpen} onOpenChange={setAgentOpen}>
-          <CollapsibleTrigger asChild>
-            <button
-              type="button"
-              className={cn(
-                'relative isolate flex w-full items-center gap-3 overflow-hidden rounded-xl border-l-[3px] bg-sidebar px-3 py-2.5 text-left text-[15px] transition-colors',
-                pathname.startsWith('/settings/agent')
-                  ? 'border-primary bg-sidebar-accent font-semibold text-sidebar-accent-foreground'
-                  : 'border-transparent font-medium text-muted-foreground hover:bg-zinc-100/80 hover:text-foreground dark:hover:bg-zinc-800/40'
-              )}
-              aria-expanded={agentOpen}
-              aria-label={agentOpen ? 'Collapse Agent section' : 'Expand Agent section'}
-            >
-              <Bot className="h-[1.125rem] w-[1.125rem] shrink-0 opacity-90" />
-              <span className="truncate">Agent</span>
-            </button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-0.5 space-y-0.5 border-l-[3px] border-border/70 pl-2 ml-1">
+        <SheetClose asChild>
+          <Link href={agentRootHref} className={linkClass(onAgentBranch)}>
+            <Bot className="h-[1.125rem] w-[1.125rem] shrink-0 opacity-90" />
+            <span className="truncate">Agent</span>
+          </Link>
+        </SheetClose>
+        {onAgentBranch ? (
+          <div className="mt-0.5 space-y-0.5 border-l-[3px] border-border/70 pl-2 ml-1">
             {AGENT_SECTION_SLUGS.map((key) => {
               const base = `/settings/agent/${slugFromAgentSection(key)}`
               const active = pathname === base
@@ -145,8 +130,8 @@ export function MobileSidebar() {
                 </SheetClose>
               )
             })}
-          </CollapsibleContent>
-        </Collapsible>
+          </div>
+        ) : null}
 
         <SheetClose asChild>
           <Link href={phoneHref} className={linkClass(pathname.startsWith('/settings/phone-summaries'))}>

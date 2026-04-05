@@ -23,7 +23,7 @@ export function slugFromAgentSection(key: AgentWorkspaceKey): string {
   return key
 }
 
-export const DEFAULT_AGENT_SECTION: AgentWorkspaceKey = 'knowledge'
+export const DEFAULT_AGENT_SECTION: AgentWorkspaceKey = 'agent-settings'
 
 export const AGENT_SUBNAV_LABELS: Record<AgentWorkspaceKey, string> = {
   'agent-settings': 'Agent settings',
