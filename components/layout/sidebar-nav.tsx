@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -8,6 +7,7 @@ import {
   LayoutDashboard,
   Phone,
   Users,
+  Headphones,
   LogOut,
   ClipboardList,
   UserCog,
@@ -74,14 +74,9 @@ export function SidebarNav() {
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-60 flex-col overflow-x-hidden border-r border-sidebar-border bg-sidebar shadow-[1px_0_0_rgba(0,0,0,0.02)]">
       <div className="flex h-14 items-center gap-3 border-b border-sidebar-border px-5">
-        <Image
-          src="/vocalis-support-avatar.png"
-          alt=""
-          width={36}
-          height={36}
-          className="size-9 shrink-0 rounded-xl shadow-sm ring-1 ring-sidebar-border"
-          priority
-        />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary shadow-sm">
+          <Headphones className="h-5 w-5 text-primary-foreground" />
+        </div>
         <div className="min-w-0 flex flex-col">
           <span className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground">Vocalis</span>
           <span className="truncate text-xs text-muted-foreground">

@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -22,6 +21,7 @@ import {
   PhoneIncoming,
   ChevronDown,
   ChevronUp,
+  Headphones,
   Bot,
   BookOpen,
   Settings2,
@@ -537,15 +537,10 @@ export function AudiologyLanding() {
     <div className="min-h-screen bg-background text-foreground antialiased selection:bg-primary/20 selection:text-foreground">
       <header className="sticky top-0 z-50 border-b border-border/60 bg-background/90 shadow-sm backdrop-blur-xl supports-[backdrop-filter]:bg-background/75">
         <div className="container mx-auto flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
-          <Link href="/" className="flex min-w-0 items-center gap-2.5">
-            <Image
-              src="/vocalis-support-avatar.png"
-              alt=""
-              width={36}
-              height={36}
-              className="size-9 shrink-0 rounded-xl shadow-sm ring-1 ring-border/60"
-              priority
-            />
+          <Link href="/" className="flex min-w-0 items-center gap-2">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+              <Headphones className="h-4 w-4" />
+            </div>
             <span className="truncate text-lg font-bold tracking-tight">Vocalis</span>
           </Link>
           <nav className="hidden items-center gap-7 lg:flex">
