@@ -28,7 +28,11 @@ export const metadata: Metadata = {
     "AI-powered voice receptionist for clinics and service businesses—answers calls 24/7, schedules, troubleshoots, and escalates when it matters.",
   applicationName: "Vocalis",
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    icon: [
+      { url: "/icon", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/apple-icon", type: "image/png", sizes: "180x180" }],
   },
   openGraph: {
     type: "website",
