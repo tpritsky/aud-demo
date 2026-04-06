@@ -7,7 +7,14 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Headphones } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -82,7 +89,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary">
@@ -191,12 +198,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             </>
           )}
         </CardContent>
+        <CardFooter className="flex justify-center border-t border-border/60 pb-6 pt-4">
+          <Link href="/" className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground">
+            Back to home
+          </Link>
+        </CardFooter>
       </Card>
-      <p className="mt-6 text-center text-sm text-muted-foreground">
-        <Link href="/" className="underline underline-offset-2 hover:text-foreground">
-          Back to home
-        </Link>
-      </p>
     </div>
   )
 }

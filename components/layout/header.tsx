@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { Bell, Search, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -61,7 +61,6 @@ function initialsForAccount(
 }
 
 export function Header({ title }: HeaderProps) {
-  const router = useRouter()
   const pathname = usePathname() || ''
   const showSearch = shouldShowPatientCallSearch(pathname)
   const { callbackTasks, setIsLoggedIn, sessionAccount } = useAppStore()
@@ -183,9 +182,7 @@ export function Header({ title }: HeaderProps) {
                     toast.error('Could not sign out', {
                       description: e instanceof Error ? e.message : 'Try again.',
                     })
-                    return
                   }
-                  router.replace('/dashboard')
                 })()
               }}
             >

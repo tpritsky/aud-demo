@@ -221,6 +221,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true)
 
+      const patientsCallsPromise = Promise.all([
+        dbPatients.getPatients(supabase, userId).catch(() => []),
+        dbCalls.listCallsForSession(supabase, 200).catch(() => []),
+      ])
+
       // Load profile first (role, clinic_id) for Team and access control.
       // Prefer API route (service role) so we don't depend on RLS / client session.
       let role: 'super_admin' | 'admin' | 'member' | null = null
@@ -243,7 +248,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const res = await fetchWithTimeout(
               '/api/profile',
               { headers: { Authorization: `Bearer ${token}` } },
-              14_000
+              10_000
             )
             if (res.ok) {
               const data = (await res.json()) as {
@@ -376,12 +381,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSessionAccount(null)
       }
 
-      // Load critical data first (calls, patients) to show UI quickly
-      // Then load less critical data in parallel
-      const [patientsData, callsData] = await Promise.all([
-        dbPatients.getPatients(supabase, userId).catch(() => []),
-        dbCalls.listCallsForSession(supabase, 200).catch(() => []),
-      ])
+      const [patientsData, callsData] = await patientsCallsPromise
 
       // Set critical data immediately so UI can render
       setPatients(patientsData)
@@ -798,14 +798,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleSetIsLoggedIn = async (value: boolean) => {
     if (!value) {
-      try {
-        const { error } = await supabase.auth.signOut({ scope: 'global' })
-        if (error) throw error
-      } catch (e) {
-        console.warn('[Vocalis] signOut failed; clearing local session', e)
-        await clearLocalSupabaseSession()
-      }
       resetClientAuthState()
+      void (async () => {
+        try {
+          await Promise.race([
+            supabase.auth.signOut({ scope: 'global' }),
+            new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+          ])
+        } catch (e) {
+          console.warn('[Vocalis] signOut:', e)
+        }
+        await clearLocalSupabaseSession()
+      })()
       return
     }
     setIsLoggedIn(true)
