@@ -19,22 +19,49 @@ export function isRefreshTokenAuthError(err: unknown): boolean {
  * Clear a broken or unwanted browser session without calling Supabase sign-out API
  * (avoids extra errors when the refresh token is already invalid).
  */
-export async function clearLocalSupabaseSession(): Promise<void> {
-  try {
-    await supabase.auth.signOut({ scope: 'local' })
-  } catch {
-    // ignore
-  }
+function wipeSupabaseBrowserStorage(): void {
   if (typeof window === 'undefined') return
   try {
     const prefix = 'sb-'
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const key = localStorage.key(i)
-      if (key?.startsWith(prefix) && key.includes('auth')) {
+      if (
+        key?.startsWith(prefix) &&
+        (key.includes('auth') || key.toLowerCase().includes('supabase'))
+      ) {
         localStorage.removeItem(key)
       }
     }
   } catch {
     // ignore
   }
+}
+
+export async function clearLocalSupabaseSession(): Promise<void> {
+  try {
+    await supabase.auth.signOut({ scope: 'local' })
+  } catch {
+    // ignore
+  }
+  wipeSupabaseBrowserStorage()
+}
+
+/**
+ * Before showing the password form: drop cached tokens without calling global sign-out
+ * (global `signOut` can hang on the network — same class of bug as stuck `getSession`).
+ * Sync storage wipe first, then bounded local sign-out.
+ */
+export async function prepareClientForFreshSignIn(maxWaitMs = 900): Promise<void> {
+  wipeSupabaseBrowserStorage()
+  await Promise.race([
+    (async () => {
+      try {
+        await supabase.auth.signOut({ scope: 'local' })
+      } catch {
+        // ignore
+      }
+    })(),
+    new Promise<void>((resolve) => setTimeout(resolve, maxWaitMs)),
+  ])
+  wipeSupabaseBrowserStorage()
 }

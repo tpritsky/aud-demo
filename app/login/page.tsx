@@ -1,55 +1,43 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2 } from 'lucide-react'
-import { supabase } from '@/lib/supabase/client'
-import { clearLocalSupabaseSession } from '@/lib/supabase/clear-stale-session'
+import { prepareClientForFreshSignIn } from '@/lib/supabase/clear-stale-session'
+
+function safeNextTarget(): string {
+  let target = '/dashboard'
+  if (typeof window === 'undefined') return target
+  const next = new URLSearchParams(window.location.search).get('next')
+  if (
+    next &&
+    next.startsWith('/') &&
+    !next.startsWith('//') &&
+    !next.includes(':') &&
+    !next.includes('@')
+  ) {
+    target = next
+  }
+  return target
+}
 
 /**
- * Entry for “Sign in” from marketing: clears cached Supabase session first so users always get the
- * real password screen (avoids stale cookies showing an empty “Your clinic” shell).
+ * Marketing “Sign in” lands here briefly: clear client session fast (no global sign-out — it can hang),
+ * then continue to the app shell login form.
  */
 export default function LoginPage() {
   const router = useRouter()
-  const [status, setStatus] = useState('Signing out of any previous session…')
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      try {
-        const { error } = await supabase.auth.signOut({ scope: 'global' })
-        if (error) throw error
-      } catch {
-        await clearLocalSupabaseSession()
-      }
+    void (async () => {
+      await prepareClientForFreshSignIn(900)
       if (cancelled) return
-      setStatus('Continue to sign in…')
-      let target = '/dashboard'
-      if (typeof window !== 'undefined') {
-        const next = new URLSearchParams(window.location.search).get('next')
-        if (
-          next &&
-          next.startsWith('/') &&
-          !next.startsWith('//') &&
-          !next.includes(':') &&
-          !next.includes('@')
-        ) {
-          target = next
-        }
-      }
-      router.replace(target)
+      router.replace(safeNextTarget())
     })()
-
     return () => {
       cancelled = true
     }
   }, [router])
 
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-muted/30 px-4">
-      <Loader2 className="h-8 w-8 animate-spin text-emerald-600" aria-hidden />
-      <p className="text-center text-sm text-muted-foreground">{status}</p>
-    </div>
-  )
+  return <div className="min-h-screen bg-background" />
 }
