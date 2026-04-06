@@ -1,16 +1,36 @@
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 
+const AUTH_INVALID_EVENT = 'vocalis:auth-invalid'
+
+function dispatchAuthInvalid(reason: string) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(AUTH_INVALID_EVENT, { detail: { reason } }))
+}
+
+export const vocalisAuthInvalidEventName = AUTH_INVALID_EVENT
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
 /**
  * Read session with a hard time budget so a stuck `getSession()` cannot block hydration forever.
  * Falls back to `getUser()` + second `getSession()` when the first read times out (cookie refresh race).
+ *
+ * Phase lengths scale with `totalMs` so a small budget never starves the getUser / second-getSession path
+ * (which previously caused false "no session" while the user was still signed in).
  */
-export async function getSessionWithBudget(totalMs = 14_000): Promise<{
+export async function getSessionWithBudget(totalMs = 22_000): Promise<{
   session: Session | null
   error: unknown
 }> {
   const t0 = Date.now()
-  const firstMs = Math.min(10_000, totalMs)
+  const minFallbackBudget = 10_500
+  const firstMs = Math.min(
+    12_000,
+    Math.max(3_500, totalMs - minFallbackBudget)
+  )
 
   const first = await Promise.race([
     supabase.auth.getSession(),
@@ -51,9 +71,35 @@ export async function getSessionWithBudget(totalMs = 14_000): Promise<{
   return { session: second.data.session, error: second.error ?? null }
 }
 
-/** Access token for `Authorization: Bearer` calls — never block forever on a stuck `getSession()`. */
-export async function getAccessTokenWithBudget(totalMs = 12_000): Promise<string | null> {
+/**
+ * Access token for `Authorization: Bearer` API calls.
+ * Uses a generous budget, then `refreshSession`, then clears client UI if Supabase reports no user.
+ */
+export async function getAccessTokenWithBudget(totalMs = 24_000): Promise<string | null> {
   const { session } = await getSessionWithBudget(totalMs)
-  const t = session?.access_token?.trim()
-  return t || null
+  let t: string | null = session?.access_token?.trim() || null
+  if (t) return t
+
+  const refresh = await Promise.race([
+    supabase.auth.refreshSession(),
+    sleep(10_000).then(() => ({ data: { session: null }, error: null as unknown })),
+  ])
+  const rs = refresh as { data: { session: Session | null }; error: unknown }
+  t = rs.data.session?.access_token?.trim() || null
+  if (t) return t
+
+  const userOutcome = await Promise.race([
+    supabase.auth.getUser().then((r) => ({ kind: 'ok' as const, r })),
+    sleep(6_000).then(() => ({ kind: 'timeout' as const })),
+  ])
+  if (userOutcome.kind === 'ok' && !userOutcome.r.data.user) {
+    dispatchAuthInvalid('no_user_after_token_recovery')
+  }
+
+  const last = await Promise.race([
+    supabase.auth.getSession(),
+    sleep(4_000).then(() => ({ data: { session: null }, error: null as unknown })),
+  ])
+  const ls = last as { data: { session: Session | null } }
+  return ls.data.session?.access_token?.trim() || null
 }

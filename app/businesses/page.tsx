@@ -105,7 +105,7 @@ function roleAtBusinessLabel(role: string): string {
 const SUPER_ADMIN_FETCH_MS = 22_000
 
 async function getToken() {
-  return getAccessTokenWithBudget(12_000)
+  return getAccessTokenWithBudget()
 }
 
 export default function BusinessesPage() {
@@ -203,12 +203,7 @@ export default function BusinessesPage() {
   const loadBusinesses = useCallback(async () => {
     try {
       const token = await getToken()
-      if (!token) {
-        toast.error('Could not read your session', {
-          description: 'Refresh the page or sign in again.',
-        })
-        return
-      }
+      if (!token) return
       const res = await fetchWithTimeout(
         '/api/super-admin/businesses',
         { headers: { Authorization: `Bearer ${token}` } },
@@ -230,12 +225,16 @@ export default function BusinessesPage() {
     }
   }, [])
 
-  const loadUsers = useCallback(async () => {
+  const loadUsers = useCallback(async (notifyIfNoSession?: boolean) => {
     setUsersLoading(true)
     try {
       const token = await getToken()
       if (!token) {
-        toast.error('Session expired — sign in again')
+        if (notifyIfNoSession) {
+          toast.error('Could not read your session', {
+            description: 'Refresh the page or sign in again.',
+          })
+        }
         return
       }
       const res = await fetchWithTimeout(
@@ -271,21 +270,65 @@ export default function BusinessesPage() {
 
   useEffect(() => {
     if (profile?.role !== 'super_admin') return
+    let cancelled = false
     const run = async () => {
       setLoading(true)
+      setUsersLoading(true)
       try {
-        await loadBusinesses()
+        const token = await getAccessTokenWithBudget()
+        if (cancelled) return
+        if (!token) {
+          toast.error('Could not load your session', {
+            description: 'Refresh the page or sign in again.',
+          })
+          return
+        }
+        const [bizRes, usersRes] = await Promise.all([
+          fetchWithTimeout(
+            '/api/super-admin/businesses',
+            { headers: { Authorization: `Bearer ${token}` } },
+            SUPER_ADMIN_FETCH_MS
+          ),
+          fetchWithTimeout(
+            '/api/super-admin/users',
+            { headers: { Authorization: `Bearer ${token}` } },
+            SUPER_ADMIN_FETCH_MS
+          ),
+        ])
+        if (cancelled) return
+        const bizData = await bizRes.json().catch(() => ({}))
+        const usersData = await usersRes.json().catch(() => ({}))
+        if (!bizRes.ok) {
+          toast.error(typeof bizData.error === 'string' ? bizData.error : 'Failed to load businesses')
+        } else {
+          setBusinesses(bizData.businesses || [])
+        }
+        if (!usersRes.ok) {
+          toast.error(typeof usersData.error === 'string' ? usersData.error : 'Failed to load users')
+        } else {
+          setUsers(usersData.users || [])
+        }
+      } catch (e) {
+        if (!cancelled) {
+          if (isLikelyAbortError(e)) {
+            toast.error('Request timed out', { description: 'Check your connection and try again.' })
+          } else {
+            console.error('Super admin bootstrap:', e)
+            toast.error('Failed to load Super Admin data')
+          }
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+          setUsersLoading(false)
+        }
       }
     }
     void run()
-  }, [profile?.role, loadBusinesses])
-
-  useEffect(() => {
-    if (profile?.role !== 'super_admin') return
-    loadUsers()
-  }, [profile?.role, loadUsers])
+    return () => {
+      cancelled = true
+    }
+  }, [profile?.role])
 
   useEffect(() => {
     if (profile?.clinicId) setPreviewClinicId(profile.clinicId)
@@ -1068,7 +1111,7 @@ export default function BusinessesPage() {
               </div>
             </div>
             {assignClinicId && (
-              <Button variant="outline" size="sm" onClick={loadUsers}>
+              <Button variant="outline" size="sm" onClick={() => void loadUsers(true)}>
                 Refresh user list
               </Button>
             )}

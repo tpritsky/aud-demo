@@ -52,8 +52,8 @@ export function AgentWorkspaceTab({ section, superAdminClinicId = null }: Props)
   const [resolvedClinicId, setResolvedClinicId] = useState<string | null>(null)
 
   const authFetch = useCallback(async (url: string, init?: RequestInit) => {
-    const token = await getAccessTokenWithBudget(12_000)
-    if (!token) throw new Error('Not signed in')
+    const token = await getAccessTokenWithBudget()
+    if (!token) throw new Error('Could not read your session — try refreshing the page.')
     return fetch(url, {
       ...init,
       headers: {

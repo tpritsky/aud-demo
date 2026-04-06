@@ -57,7 +57,7 @@ export function ConvaiLinePhoneField({
     setLoad('loading')
     ;(async () => {
       try {
-        const token = await getAccessTokenWithBudget(12_000)
+        const token = await getAccessTokenWithBudget()
         if (!token) {
           if (!cancelled) setLoad('error')
           return

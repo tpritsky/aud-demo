@@ -29,7 +29,11 @@ import {
   clearLocalSupabaseSession,
   isRefreshTokenAuthError,
 } from '@/lib/supabase/clear-stale-session'
-import { getAccessTokenWithBudget, getSessionWithBudget } from '@/lib/supabase/session-read'
+import {
+  getAccessTokenWithBudget,
+  getSessionWithBudget,
+  vocalisAuthInvalidEventName,
+} from '@/lib/supabase/session-read'
 import * as dbPatients from '@/lib/db/patients'
 import * as dbCalls from '@/lib/db/calls'
 import * as dbSequences from '@/lib/db/sequences'
@@ -137,6 +141,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('unhandledrejection', onUnhandledRejection)
   }, [])
 
+  /** Token recovery confirmed there is no Supabase user — drop stale profile / "Super admin" shell. */
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onInvalid = () => {
+      userIdRef.current = null
+      resetClientAuthState()
+      void clearLocalSupabaseSession()
+      toast.error('Session ended', { description: 'Sign in again to continue.' })
+    }
+    window.addEventListener(vocalisAuthInvalidEventName, onInvalid)
+    return () => window.removeEventListener(vocalisAuthInvalidEventName, onInvalid)
+  }, [resetClientAuthState])
+
   /**
    * Unlock the shell before any async auth work. `getSession()` can stall indefinitely after deploy / bad
    * client state; gating `isHydrated` on it caused a permanent “Loading…” with no relation to “wait longer”.
@@ -155,7 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        const { session, error } = await getSessionWithBudget(14_000)
+        const { session, error } = await getSessionWithBudget(20_000)
 
         if (error && isRefreshTokenAuthError(error)) {
           console.warn(
@@ -239,7 +256,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       let token = accessTokenOverride?.trim() || null
       if (!token) {
-        token = await getAccessTokenWithBudget(10_000)
+        token = await getAccessTokenWithBudget()
       }
       if (token) {
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -336,7 +353,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       if (role && !sessionAcc) {
-        const { session: authSession } = await getSessionWithBudget(8_000)
+        const { session: authSession } = await getSessionWithBudget(14_000)
         if (authSession?.user?.email) {
           const meta = authSession.user.user_metadata as { full_name?: string } | undefined
           sessionAcc = {
@@ -457,7 +474,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refetchProfileFromApi = useCallback(async () => {
     try {
-      const token = await getAccessTokenWithBudget(10_000)
+      const token = await getAccessTokenWithBudget()
       if (!token) return
       const res = await fetchWithTimeout('/api/profile', { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) return
