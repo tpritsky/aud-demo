@@ -578,7 +578,7 @@ export function AudiologyLanding() {
         <div className="pointer-events-none absolute -left-32 top-24 h-80 w-80 rounded-full bg-primary/[0.12] blur-3xl" aria-hidden />
         <div className="pointer-events-none absolute -right-24 top-40 h-72 w-72 rounded-full bg-emerald-400/15 blur-3xl" aria-hidden />
 
-        <div className="container relative mx-auto text-center">
+        <div className="container relative mx-auto max-sm:pr-12 text-center">
           <div className="mx-auto mb-8 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-card/90 px-4 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/50 opacity-60 motion-reduce:animate-none" />
@@ -587,9 +587,9 @@ export function AudiologyLanding() {
             Voice AI for clinics, firms &amp; service teams
           </div>
 
-          <h1 className="mx-auto max-w-4xl text-balance text-4xl font-bold leading-[1.08] tracking-tight text-foreground sm:text-5xl lg:text-6xl lg:leading-[1.06]">
-            The AI voice receptionist that <span className="text-primary">answers every call</span>
-            {' '}
+          <h1 className="mx-auto max-w-4xl text-pretty text-4xl font-bold leading-[1.08] tracking-tight text-foreground sm:text-balance sm:text-5xl lg:text-6xl lg:leading-[1.06]">
+            The AI voice receptionist that{' '}
+            <span className="text-primary max-sm:mr-1">answers every call</span>{' '}
             <br className="hidden sm:block" />
             <span className="sm:ml-2">while </span>
             <span className="text-primary">you focus on what matters</span>
@@ -598,14 +598,23 @@ export function AudiologyLanding() {
             Automate inbound calls, lighten the front desk, and give every caller a consistent experience—without losing
             the human touch when it matters.
           </p>
-          <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-            <Button asChild size="lg" className="h-12 rounded-full px-8 text-base font-semibold shadow-md shadow-primary/20">
+          <div className="mt-10 flex flex-row flex-wrap items-center justify-center gap-3 sm:gap-4">
+            <Button
+              asChild
+              size="lg"
+              className="h-12 min-w-[8.5rem] flex-1 rounded-full px-5 text-base font-semibold shadow-md shadow-primary/20 sm:max-w-none sm:flex-none sm:px-8"
+            >
               <Link href="/login">
                 Sign in
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
-            <Button asChild size="lg" variant="outline" className="h-12 rounded-full border-border/80 bg-card/80 px-8 text-base font-medium backdrop-blur-sm">
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="h-12 min-w-[8.5rem] flex-1 rounded-full border-border/80 bg-card/80 px-5 text-base font-medium backdrop-blur-sm sm:max-w-none sm:flex-none sm:px-8"
+            >
               <a href="#features">Features</a>
             </Button>
           </div>
@@ -667,17 +676,21 @@ export function AudiologyLanding() {
               From first ring to follow-up—built for real phone load, not a generic phone tree.
             </p>
           </div>
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">
             {features.map((feature) => (
               <div
                 key={feature.title}
-                className="group rounded-2xl border border-border/70 bg-card p-6 shadow-sm transition-all hover:border-primary/25 hover:shadow-md"
+                className="group rounded-2xl border border-border/70 bg-card p-4 shadow-sm transition-all hover:border-primary/25 hover:shadow-md sm:p-6"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/15">
-                  <feature.icon className="h-6 w-6" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/15 sm:h-12 sm:w-12">
+                  <feature.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
-                <h3 className="mt-4 text-lg font-semibold text-foreground">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{feature.description}</p>
+                <h3 className="mt-3 text-base font-semibold leading-snug text-foreground sm:mt-4 sm:text-lg">
+                  {feature.title}
+                </h3>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground sm:mt-2 sm:text-sm">
+                  {feature.description}
+                </p>
               </div>
             ))}
           </div>
@@ -968,8 +981,8 @@ export function AudiologyLanding() {
 
       <footer className="border-t border-border/60 bg-muted/40 py-12">
         <div className="container mx-auto px-4 lg:px-8">
-          <div className="grid gap-10 md:grid-cols-4">
-            <div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-4 md:gap-10">
+            <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
                   <Mic className="h-4 w-4" />
@@ -1020,7 +1033,7 @@ export function AudiologyLanding() {
                 </li>
               </ul>
             </div>
-            <div>
+            <div className="col-span-2 md:col-span-1">
               <h3 className="mb-4 text-sm font-semibold text-foreground">Legal</h3>
               <p className="text-sm text-muted-foreground">Privacy &amp; terms: contact your administrator.</p>
             </div>
