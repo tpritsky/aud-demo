@@ -7,6 +7,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+function convaiFollowUpDebug(): boolean {
+  return process.env.DEBUG_CONVAI_FOLLOWUP === '1'
+}
+
 /**
  * ConvAI reads `result` aloud — never echo raw provider bodies (often include 401 / Unauthorized).
  */
@@ -110,11 +114,32 @@ export async function deliverFollowUpFromLiveTool(opts: {
   params: LiveFollowUpToolParams
 }): Promise<{ ok: true; result: string } | { ok: false; result: string }> {
   const { supabase, conversationId, clinicName, templates, params } = opts
+  if (convaiFollowUpDebug()) {
+    console.error(
+      '[deliverFollowUp live][debug] start conv=',
+      conversationId.slice(0, 18),
+      'template_id=',
+      params.template_id?.slice(0, 14) ?? '(none)',
+      'caller_confirmed=',
+      params.caller_confirmed,
+      'send_sms=',
+      params.send_sms,
+      'send_email=',
+      params.send_email
+    )
+  }
   if (!params.caller_confirmed) {
+    if (convaiFollowUpDebug()) console.error('[deliverFollowUp live][debug] bail: caller_confirmed not true')
     return { ok: false, result: 'Not sent: caller_confirmed must be true.' }
   }
   const tpl = templates.find((t) => t.id === params.template_id)
   if (!tpl || tpl.enabled === false) {
+    if (convaiFollowUpDebug()) {
+      console.error(
+        '[deliverFollowUp live][debug] bail: template missing or disabled; template_ids loaded=',
+        templates.length
+      )
+    }
     return { ok: false, result: 'Not sent: unknown or disabled template_id.' }
   }
 
@@ -125,6 +150,16 @@ export async function deliverFollowUpFromLiveTool(opts: {
   if (delivery === 'email') wantSms = false
 
   if (!wantSms && !wantEmail) {
+    if (convaiFollowUpDebug()) {
+      console.error(
+        '[deliverFollowUp live][debug] bail: channel mismatch delivery=',
+        delivery,
+        'wantSms=',
+        wantSms,
+        'wantEmail=',
+        wantEmail
+      )
+    }
     return {
       ok: false,
       result:
@@ -152,6 +187,7 @@ export async function deliverFollowUpFromLiveTool(opts: {
 
   if (wantEmail) {
     if (!process.env.RESEND_API_KEY?.trim()) {
+      if (convaiFollowUpDebug()) console.error('[deliverFollowUp live][debug] bail: RESEND_API_KEY unset')
       return {
         ok: false,
         result:
@@ -160,10 +196,16 @@ export async function deliverFollowUpFromLiveTool(opts: {
     }
     const email = params.destination_email?.trim().toLowerCase() ?? ''
     if (!email || !EMAIL_RE.test(email)) {
+      if (convaiFollowUpDebug()) console.error('[deliverFollowUp live][debug] bail: invalid destination_email')
       return { ok: false, result: 'Not sent: need a valid destination_email for email delivery.' }
     }
     const subjectBase = tpl.label.trim() || 'Message from your call'
     const subject = `${clinicName?.trim() ? `${clinicName.trim()} — ` : ''}${subjectBase}`.slice(0, 200)
+    if (convaiFollowUpDebug()) {
+      const at = email.indexOf('@')
+      const masked = at > 0 ? `***@${email.slice(at + 1)}` : '(bad)'
+      console.error('[deliverFollowUp live][debug] Resend send to=', masked, 'subject_len=', subject.length)
+    }
     try {
       await sendTestEmail({
         to: email,
@@ -171,9 +213,13 @@ export async function deliverFollowUpFromLiveTool(opts: {
         body: tpl.message.trim().slice(0, 8000),
       })
       sent.push('email')
+      if (convaiFollowUpDebug()) console.error('[deliverFollowUp live][debug] Resend send succeeded')
     } catch (e) {
       console.error('[deliverFollowUp live] email failed', tpl.id, e)
       const msg = e instanceof Error ? e.message : String(e)
+      if (convaiFollowUpDebug()) {
+        console.error('[deliverFollowUp live][debug] Resend error raw (staff only):', msg.slice(0, 500))
+      }
       if (msg.includes('RESEND_NOT_CONFIGURED')) {
         console.error('[deliverFollowUp live] Set RESEND_API_KEY on the server (same as Settings → test message).')
         return { ok: false, result: voiceSafeLiveToolFailureMessage('email', e) }
