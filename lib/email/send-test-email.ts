@@ -1,7 +1,20 @@
-import { RESEND_FROM_EMAIL } from '@/lib/email/resend-from'
+import { getResendFromEmail } from '@/lib/email/resend-from'
+
+type ResendErrorShape = {
+  message?: string
+  name?: string
+  statusCode?: number | null
+}
+
+function formatResendError(error: ResendErrorShape | null | undefined): string {
+  if (!error) return 'Unknown Resend error'
+  const parts = [error.name, error.message].filter((x): x is string => typeof x === 'string' && x.length > 0)
+  const s = parts.join(' — ') || 'Unknown Resend error'
+  return s.length > 400 ? `${s.slice(0, 400)}…` : s
+}
 
 /**
- * Transactional email via Resend (test sends, post-call follow-ups, etc.).
+ * Transactional email via Resend (test sends, post-call follow-ups, live ConvAI tool, etc.).
  */
 export async function sendTestEmail(params: {
   to: string
@@ -16,19 +29,19 @@ export async function sendTestEmail(params: {
   const { Resend } = await import('resend')
   const resend = new Resend(apiKey)
 
-  const { error } = await resend.emails.send({
-    from: RESEND_FROM_EMAIL,
+  const res = await resend.emails.send({
+    from: getResendFromEmail(),
     to: params.to,
     subject: params.subject,
     text: params.body,
   })
 
-  if (error) {
-    console.error('[sendTestEmail]', error)
-    throw new Error(
-      typeof error === 'object' && error && 'message' in error
-        ? String((error as { message: string }).message)
-        : 'Email send failed'
-    )
+  if (res.error) {
+    console.error('[sendTestEmail]', res.error)
+    throw new Error(formatResendError(res.error))
+  }
+  if (!res.data?.id) {
+    console.error('[sendTestEmail] missing data.id', res)
+    throw new Error('Resend accepted the request but returned no message id')
   }
 }

@@ -1,4 +1,4 @@
-import { RESEND_FROM_EMAIL } from '@/lib/email/resend-from'
+import { getResendFromEmail } from '@/lib/email/resend-from'
 
 function escapeHtml(s: string): string {
   return s
@@ -31,8 +31,8 @@ export async function sendClinicInviteEmail(params: ClinicInviteEmailParams): Pr
   const greeting =
     params.inviteeName?.trim() ? `Hi ${escapeHtml(params.inviteeName.trim())},` : 'Hi,'
 
-  const { error } = await resend.emails.send({
-    from: RESEND_FROM_EMAIL,
+  const res = await resend.emails.send({
+    from: getResendFromEmail(),
     to: params.to,
     subject: `You’re invited to join ${params.clinicName}`,
     html: `
@@ -43,9 +43,13 @@ export async function sendClinicInviteEmail(params: ClinicInviteEmailParams): Pr
     `,
   })
 
-  if (error) {
-    console.error('[sendClinicInviteEmail]', error)
-    throw new Error(typeof error === 'object' && error && 'message' in error ? String((error as { message: string }).message) : 'Email send failed')
+  if (res.error) {
+    console.error('[sendClinicInviteEmail]', res.error)
+    const msg =
+      typeof res.error === 'object' && res.error && 'message' in res.error
+        ? String((res.error as { message: string }).message)
+        : 'Email send failed'
+    throw new Error(msg)
   }
 
   return true

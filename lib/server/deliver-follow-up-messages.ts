@@ -163,7 +163,7 @@ export async function deliverFollowUpFromLiveTool(opts: {
       sent.push('email')
     } catch (e) {
       console.error('[deliverFollowUp live] email failed', tpl.id, e)
-      const msg = e instanceof Error ? e.message : ''
+      const msg = e instanceof Error ? e.message : String(e)
       if (msg.includes('RESEND_NOT_CONFIGURED')) {
         return {
           ok: false,
@@ -171,7 +171,13 @@ export async function deliverFollowUpFromLiveTool(opts: {
             'Email provider (Resend) is not configured. An admin must set RESEND_API_KEY — same as the dashboard test message.',
         }
       }
-      return { ok: false, result: 'Email send failed; try again or send after the call.' }
+      const short = msg.replace(/\s+/g, ' ').trim().slice(0, 200)
+      return {
+        ok: false,
+        result: short
+          ? `Email failed (${short}). Apologize briefly. Staff: check Resend dashboard, RESEND_API_KEY, and RESEND_FROM_EMAIL on a verified domain.`
+          : 'Email send failed; try again or send after the call.',
+      }
     }
   }
 
