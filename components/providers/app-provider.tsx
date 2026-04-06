@@ -31,6 +31,7 @@ import {
 } from '@/lib/supabase/clear-stale-session'
 import { getAccessTokenWithBudget, getSessionWithBudget } from '@/lib/supabase/session-read'
 import { verifyRequiredBackendReads } from '@/lib/auth/bootstrap-verify'
+import { AUTH_BOOTSTRAP_BUDGET_MS, AUTH_BOOTSTRAP_FETCH_MS } from '@/lib/auth/bootstrap-budget'
 import * as dbPatients from '@/lib/db/patients'
 import * as dbCalls from '@/lib/db/calls'
 import * as dbSequences from '@/lib/db/sequences'
@@ -50,7 +51,14 @@ type ProfileSnapshot = {
   needsClinicOnboarding?: boolean
 }
 
-type LoadInitialDataOptions = { gateLogin?: boolean }
+type LoadInitialDataOptions = {
+  gateLogin?: boolean
+  /** Tight fetch timeouts so gate + profile fit in the startup budget (see lib/auth/bootstrap-budget.ts). */
+  bootstrapStrictSla?: boolean
+  /** After a successful gate, show the shell immediately and load dashboard in the background. */
+  returnAfterGate?: boolean
+  bootstrapStalenessCheck?: () => boolean
+}
 type LoadInitialDataResult = { ok: boolean; errors: string[] }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -64,6 +72,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [authSessionChecked, setAuthSessionChecked] = useState(false)
   const [authVerifying, setAuthVerifying] = useState(false)
+  const [authBootstrapError, setAuthBootstrapError] = useState<string | null>(null)
+  const authBootstrapRunIdRef = useRef(0)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [profile, setProfileState] = useState<ProfileSnapshot | null>(null)
@@ -105,6 +115,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     userIdRef.current = null
     setIsLoggedIn(false)
     setAuthVerifying(false)
+    setAuthBootstrapError(null)
     setProfileState(null)
     realProfileRef.current = null
     setSessionAccount(null)
@@ -153,105 +164,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsLoading(false)
   }, [])
 
-  // Check Supabase session on mount (background; does not control isHydrated)
-  useEffect(() => {
-    const checkSession = async () => {
-      setAuthSessionChecked(false)
-      try {
-        if (!hasRealSupabaseConfig()) {
-          setIsLoggedIn(false)
-          return
-        }
-
-        const { session, error } = await getSessionWithBudget(20_000)
-
-        if (error && isRefreshTokenAuthError(error)) {
-          console.warn(
-            'Session refresh failed; clearing local session:',
-            error instanceof Error ? error.message : String(error),
-          )
-          await clearLocalSupabaseSession()
-          setIsLoggedIn(false)
-          return
-        }
-
-        // End "Checking your session" as soon as we know if a session exists — gated load can take a while.
-        setAuthSessionChecked(true)
-
-        if (session?.user) {
-          userIdRef.current = session.user.id
-          setAuthVerifying(true)
-          try {
-            const result = await loadInitialDataRef.current(session.user.id, session.access_token ?? null, {
-              gateLogin: true,
-            })
-            if (result.ok) {
-              setIsLoggedIn(true)
-            } else {
-              setIsLoggedIn(false)
-            }
-          } finally {
-            setAuthVerifying(false)
-          }
-        } else {
-          setIsLoggedIn(false)
-        }
-      } catch (error: unknown) {
-        if (isLikelyAbortError(error)) {
-          // Prefetch / navigation / Strict Mode — ignore
-        } else {
-          console.error('Error checking session:', error)
-          if (isRefreshTokenAuthError(error)) {
-            await clearLocalSupabaseSession()
-          }
-          setIsLoggedIn(false)
-        }
-      } finally {
-        setAuthSessionChecked(true)
-      }
-    }
-
-    void checkSession().catch((e: unknown) => {
-      if (!isLikelyAbortError(e)) console.error('checkSession:', e)
-      setAuthSessionChecked(true)
-    })
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'INITIAL_SESSION') return
-
-      if (event === 'SIGNED_IN' && session?.user) {
-        userIdRef.current = session.user.id
-        setAuthVerifying(true)
-        try {
-          const result = await loadInitialDataRef.current(session.user.id, session.access_token ?? null, {
-            gateLogin: true,
-          })
-          if (result.ok) {
-            setIsLoggedIn(true)
-            toast.success('Signed in', { description: 'Your account and permissions are ready.' })
-          } else {
-            setIsLoggedIn(false)
-          }
-        } catch (e: unknown) {
-          if (!isLikelyAbortError(e)) console.error('loadInitialData after sign-in:', e)
-          setIsLoggedIn(false)
-        } finally {
-          setAuthVerifying(false)
-        }
-      } else if (event === 'SIGNED_OUT') {
-        resetClientAuthState()
-      } else if (event === 'TOKEN_REFRESHED') {
-        // Token refreshed successfully, no action needed
-        // Don't reload data on token refresh to avoid unnecessary lag
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [resetClientAuthState])
-
   // Load initial data from Supabase
   const loadInitialData = async (
     userId: string,
@@ -259,6 +171,139 @@ export function AppProvider({ children }: { children: ReactNode }) {
     options?: LoadInitialDataOptions
   ): Promise<LoadInitialDataResult> => {
     const gateLogin = options?.gateLogin === true
+    const strict = options?.bootstrapStrictSla === true
+    const stale = options?.bootstrapStalenessCheck
+    const profileTimeoutMs = strict ? AUTH_BOOTSTRAP_FETCH_MS : 10_000
+    const profileAttempts = strict ? 1 : 3
+
+    async function executeTail(
+      patientsCallsPromise: Promise<[Patient[], Call[]]>,
+      role: 'super_admin' | 'admin' | 'member' | null,
+      clinicId: string | null,
+      token: string | null,
+      staleCheck?: () => boolean
+    ): Promise<void> {
+      try {
+        if (staleCheck?.()) return
+        /** Super admins use the browser Supabase client like everyone else, but RLS only returns their own user_id rows.
+         *  Clinic calls/patients live under member accounts — load a merged dashboard via service-role API. */
+        let dashboardFromSuperAdminApi = false
+        if (role === 'super_admin' && token) {
+          try {
+            const res = await fetchWithTimeout(
+              `/api/super-admin/user-dashboard-data?userId=${encodeURIComponent(userId)}`,
+              { headers: { Authorization: `Bearer ${token}` } },
+              25_000
+            )
+            if (res.ok) {
+              const data = (await res.json()) as {
+                patients?: Patient[]
+                calls?: Call[]
+                callbackTasks?: CallbackTask[]
+                scheduledCheckIns?: ScheduledCheckIn[]
+                activityEvents?: ActivityEvent[]
+                agentConfig?: AgentConfig | null
+                sequences?: ProactiveSequence[]
+              }
+              setPatients(data.patients ?? [])
+              setCalls(data.calls ?? [])
+              setCallbackTasks(data.callbackTasks ?? [])
+              setScheduledCheckIns(data.scheduledCheckIns ?? [])
+              setActivityEvents(data.activityEvents ?? [])
+              if (Array.isArray(data.sequences)) setSequences(data.sequences)
+              if (data.agentConfig && typeof data.agentConfig === 'object') {
+                setAgentConfig(data.agentConfig)
+              }
+              dashboardFromSuperAdminApi = true
+            }
+          } catch (e: unknown) {
+            if (!isLikelyAbortError(e)) console.error('Super admin dashboard bootstrap:', e)
+          }
+        }
+
+        const [patientsData, callsData] = await patientsCallsPromise
+
+        if (!dashboardFromSuperAdminApi) {
+          setPatients(patientsData)
+          setCalls(callsData)
+        }
+
+        setIsLoading(false)
+
+        const clinicSettingsPromise =
+          clinicId && token
+            ? fetchWithTimeout('/api/clinic/settings', { headers: { Authorization: `Bearer ${token}` } })
+                .then(async (res) => {
+                  if (!res.ok) return null
+                  const j = (await res.json()) as { agentConfig?: AgentConfig | null }
+                  return j.agentConfig ?? null
+                })
+                .catch(() => null)
+            : clinicId
+              ? supabase
+                  .from('clinics')
+                  .select('settings')
+                  .eq('id', clinicId)
+                  .single()
+                  .then(
+                    ({ data }) =>
+                      (data as { settings?: { agentConfig?: AgentConfig } } | null)?.settings?.agentConfig ?? null
+                  )
+              : Promise.resolve(null)
+
+        const [sequencesData, tasksData, checkInsData, eventsData, configData, clinicSettingsData] =
+          await Promise.allSettled([
+            dashboardFromSuperAdminApi
+              ? Promise.resolve([] as ProactiveSequence[])
+              : dbSequences.getSequences(supabase, userId).catch(() => []),
+            dashboardFromSuperAdminApi
+              ? Promise.resolve([] as CallbackTask[])
+              : dbCallbackTasks.getCallbackTasks(supabase, userId).catch(() => []),
+            dashboardFromSuperAdminApi
+              ? Promise.resolve([] as ScheduledCheckIn[])
+              : dbScheduledCheckIns.getScheduledCheckIns(supabase, userId).catch(() => []),
+            dashboardFromSuperAdminApi
+              ? Promise.resolve([] as ActivityEvent[])
+              : dbActivityEvents.getActivityEvents(supabase, userId, 50).catch(() => []),
+            dashboardFromSuperAdminApi
+              ? Promise.resolve(null)
+              : dbAgentConfig.getAgentConfig(supabase, userId).catch(() => null),
+            clinicSettingsPromise,
+          ])
+
+        if (staleCheck?.()) return
+
+        if (!dashboardFromSuperAdminApi) {
+          if (sequencesData.status === 'fulfilled') setSequences(sequencesData.value)
+          if (tasksData.status === 'fulfilled') setCallbackTasks(tasksData.value)
+          if (checkInsData.status === 'fulfilled') setScheduledCheckIns(checkInsData.value)
+          if (eventsData.status === 'fulfilled') setActivityEvents(eventsData.value)
+        }
+        const clinicAgentConfig =
+          clinicSettingsData.status === 'fulfilled' && clinicSettingsData.value ? clinicSettingsData.value : null
+        if (clinicAgentConfig) {
+          setAgentConfig(clinicAgentConfig)
+        } else if (configData.status === 'fulfilled' && configData.value) {
+          setAgentConfig(configData.value)
+        } else {
+          let clinicName = ''
+          if (clinicId) {
+            const { data: cn } = await supabase.from('clinics').select('name').eq('id', clinicId).maybeSingle()
+            const raw = cn && typeof (cn as { name?: unknown }).name === 'string' ? (cn as { name: string }).name : ''
+            clinicName = raw.trim()
+          }
+          setAgentConfig({ ...bootstrapAgentConfig, clinicName })
+        }
+      } catch (e: unknown) {
+        if (staleCheck?.()) return
+        if (!isLikelyAbortError(e)) {
+          console.error('Dashboard tail load:', e)
+          toast.error('Could not finish loading', { description: 'Refresh if the dashboard looks incomplete.' })
+        }
+        setIsLoading(false)
+      }
+    }
+
     try {
       setIsLoading(true)
 
@@ -280,15 +325,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       let token = accessTokenOverride?.trim() || null
       if (!token) {
-        token = await getAccessTokenWithBudget()
+        token = await getAccessTokenWithBudget(strict ? Math.min(AUTH_BOOTSTRAP_BUDGET_MS, 4500) : undefined)
       }
       if (token) {
-        for (let attempt = 0; attempt < 3; attempt++) {
+        for (let attempt = 0; attempt < profileAttempts; attempt++) {
           try {
             const res = await fetchWithTimeout(
               '/api/profile',
               { headers: { Authorization: `Bearer ${token}` } },
-              10_000
+              profileTimeoutMs
             )
             if (res.ok) {
               const data = (await res.json()) as {
@@ -377,7 +422,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       if (role && !sessionAcc) {
-        const { session: authSession } = await getSessionWithBudget(14_000)
+        const { session: authSession } = await getSessionWithBudget(
+          strict ? Math.min(AUTH_BOOTSTRAP_BUDGET_MS, 4500) : 14_000
+        )
         if (authSession?.user?.email) {
           const meta = authSession.user.user_metadata as { full_name?: string } | undefined
           sessionAcc = {
@@ -404,12 +451,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setIsLoading(false)
           return { ok: false, errors }
         }
-        const gate = await verifyRequiredBackendReads({
-          userId,
-          token,
-          role,
-          clinicId,
-        })
+        const gate = await verifyRequiredBackendReads(
+          {
+            userId,
+            token,
+            role,
+            clinicId,
+          },
+          strict ? { fetchTimeoutMs: AUTH_BOOTSTRAP_FETCH_MS } : undefined
+        )
         if (!gate.ok) {
           console.error('[Vocalis] Login gate failed:', gate.errors)
           toast.error('Sign-in blocked — required data could not be loaded', {
@@ -457,117 +507,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSessionAccount(null)
       }
 
-      /** Super admins use the browser Supabase client like everyone else, but RLS only returns their own user_id rows.
-       *  Clinic calls/patients live under member accounts — load a merged dashboard via service-role API. */
-      let dashboardFromSuperAdminApi = false
-      if (role === 'super_admin' && token) {
-        try {
-          const res = await fetchWithTimeout(
-            `/api/super-admin/user-dashboard-data?userId=${encodeURIComponent(userId)}`,
-            { headers: { Authorization: `Bearer ${token}` } },
-            25_000
-          )
-          if (res.ok) {
-            const data = (await res.json()) as {
-              patients?: Patient[]
-              calls?: Call[]
-              callbackTasks?: CallbackTask[]
-              scheduledCheckIns?: ScheduledCheckIn[]
-              activityEvents?: ActivityEvent[]
-              agentConfig?: AgentConfig | null
-              sequences?: ProactiveSequence[]
-            }
-            setPatients(data.patients ?? [])
-            setCalls(data.calls ?? [])
-            setCallbackTasks(data.callbackTasks ?? [])
-            setScheduledCheckIns(data.scheduledCheckIns ?? [])
-            setActivityEvents(data.activityEvents ?? [])
-            if (Array.isArray(data.sequences)) setSequences(data.sequences)
-            if (data.agentConfig && typeof data.agentConfig === 'object') {
-              setAgentConfig(data.agentConfig)
-            }
-            dashboardFromSuperAdminApi = true
-          }
-        } catch (e: unknown) {
-          if (!isLikelyAbortError(e)) console.error('Super admin dashboard bootstrap:', e)
+      if (gateLogin && options?.returnAfterGate) {
+        if (stale?.()) {
+          setIsLoading(false)
+          return { ok: false, errors: ['Bootstrap superseded.'] }
         }
-      }
-
-      const [patientsData, callsData] = await patientsCallsPromise
-
-      if (!dashboardFromSuperAdminApi) {
-        setPatients(patientsData)
-        setCalls(callsData)
-      }
-
-      setIsLoading(false) // Allow UI to render while loading other data
-
-      // Prefer GET /api/clinic/settings so server can heal display phone + outbound agent id from the ConvAI line.
-      const clinicSettingsPromise =
-        clinicId && token
-          ? fetchWithTimeout('/api/clinic/settings', { headers: { Authorization: `Bearer ${token}` } })
-              .then(async (res) => {
-                if (!res.ok) return null
-                const j = (await res.json()) as { agentConfig?: AgentConfig | null }
-                return j.agentConfig ?? null
-              })
-              .catch(() => null)
-          : clinicId
-            ? supabase
-                .from('clinics')
-                .select('settings')
-                .eq('id', clinicId)
-                .single()
-                .then(
-                  ({ data }) =>
-                    (data as { settings?: { agentConfig?: AgentConfig } } | null)?.settings?.agentConfig ?? null
-                )
-            : Promise.resolve(null)
-
-      const [sequencesData, tasksData, checkInsData, eventsData, configData, clinicSettingsData] =
-        await Promise.allSettled([
-          dashboardFromSuperAdminApi
-            ? Promise.resolve([] as ProactiveSequence[])
-            : dbSequences.getSequences(supabase, userId).catch(() => []),
-          dashboardFromSuperAdminApi
-            ? Promise.resolve([] as CallbackTask[])
-            : dbCallbackTasks.getCallbackTasks(supabase, userId).catch(() => []),
-          dashboardFromSuperAdminApi
-            ? Promise.resolve([] as ScheduledCheckIn[])
-            : dbScheduledCheckIns.getScheduledCheckIns(supabase, userId).catch(() => []),
-          dashboardFromSuperAdminApi
-            ? Promise.resolve([] as ActivityEvent[])
-            : dbActivityEvents.getActivityEvents(supabase, userId, 50).catch(() => []),
-          dashboardFromSuperAdminApi
-            ? Promise.resolve(null)
-            : dbAgentConfig.getAgentConfig(supabase, userId).catch(() => null),
-          clinicSettingsPromise,
+        setAuthVerifying(false)
+        setIsLoggedIn(true)
+        setIsLoading(false)
+        const bgPromise = Promise.all([
+          dbPatients.getPatients(supabase, userId).catch(() => []),
+          dbCalls.listCallsForSession(supabase, 200).catch(() => []),
         ])
+        void executeTail(bgPromise, role, clinicId, token, stale)
+        return { ok: true, errors: [] }
+      }
 
-      if (!dashboardFromSuperAdminApi) {
-        if (sequencesData.status === 'fulfilled') setSequences(sequencesData.value)
-        if (tasksData.status === 'fulfilled') setCallbackTasks(tasksData.value)
-        if (checkInsData.status === 'fulfilled') setScheduledCheckIns(checkInsData.value)
-        if (eventsData.status === 'fulfilled') setActivityEvents(eventsData.value)
-      }
-      // Prefer clinic-level agent config (set by super_admin) over user's agent_config
-      const clinicAgentConfig =
-        clinicSettingsData.status === 'fulfilled' && clinicSettingsData.value ? clinicSettingsData.value : null
-      if (clinicAgentConfig) {
-        setAgentConfig(clinicAgentConfig)
-      } else if (configData.status === 'fulfilled' && configData.value) {
-        setAgentConfig(configData.value)
-      } else {
-        let clinicName = ''
-        if (clinicId) {
-          const { data: cn } = await supabase.from('clinics').select('name').eq('id', clinicId).maybeSingle()
-          const raw = cn && typeof (cn as { name?: unknown }).name === 'string' ? (cn as { name: string }).name : ''
-          clinicName = raw.trim()
-        }
-        setAgentConfig({ ...bootstrapAgentConfig, clinicName })
-      }
+      await executeTail(patientsCallsPromise, role, clinicId, token, stale)
       return { ok: true, errors: [] }
     } catch (error: unknown) {
+      if (stale?.()) {
+        setIsLoading(false)
+        return { ok: false, errors: [] }
+      }
       if (isLikelyAbortError(error)) {
         setIsLoading(false)
         return { ok: false, errors: ['Request was cancelled (navigation or timeout).'] }
@@ -586,6 +548,170 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const loadInitialDataRef = useRef(loadInitialData)
   loadInitialDataRef.current = loadInitialData
+
+  const runSessionCheck = useCallback(async () => {
+    const runIdSnapshot = ++authBootstrapRunIdRef.current
+    const isStale = () => runIdSnapshot !== authBootstrapRunIdRef.current
+
+    setAuthSessionChecked(false)
+    setAuthBootstrapError(null)
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    const timeoutPromise = new Promise<'timeout'>((resolve) => {
+      timeoutId = setTimeout(() => resolve('timeout'), AUTH_BOOTSTRAP_BUDGET_MS)
+    })
+
+    try {
+      if (!hasRealSupabaseConfig()) {
+        setIsLoggedIn(false)
+        return
+      }
+
+      const gateWork = async () => {
+        const { session, error } = await getSessionWithBudget(AUTH_BOOTSTRAP_BUDGET_MS)
+
+        if (error && isRefreshTokenAuthError(error)) {
+          console.warn(
+            'Session refresh failed; clearing local session:',
+            error instanceof Error ? error.message : String(error),
+          )
+          await clearLocalSupabaseSession()
+          setIsLoggedIn(false)
+          return
+        }
+
+        setAuthSessionChecked(true)
+
+        if (!session?.user) {
+          setIsLoggedIn(false)
+          return
+        }
+
+        userIdRef.current = session.user.id
+        setAuthVerifying(true)
+        try {
+          const result = await loadInitialDataRef.current(session.user.id, session.access_token ?? null, {
+            gateLogin: true,
+            bootstrapStrictSla: true,
+            returnAfterGate: true,
+            bootstrapStalenessCheck: isStale,
+          })
+          if (isStale()) return
+          if (!result.ok) setIsLoggedIn(false)
+        } finally {
+          if (!isStale()) setAuthVerifying(false)
+        }
+      }
+
+      const winner = await Promise.race([gateWork().then(() => 'done' as const), timeoutPromise])
+      if (timeoutId) clearTimeout(timeoutId)
+
+      if (winner === 'timeout') {
+        if (runIdSnapshot === authBootstrapRunIdRef.current) {
+          authBootstrapRunIdRef.current += 1
+          console.error(`[Vocalis] Bootstrap exceeded ${AUTH_BOOTSTRAP_BUDGET_MS}ms`)
+          resetClientAuthState()
+          setAuthBootstrapError(
+            `Startup did not finish within ${AUTH_BOOTSTRAP_BUDGET_MS / 1000} seconds. Check network, API routes, and Supabase, then retry.`,
+          )
+          setAuthSessionChecked(true)
+        }
+      }
+    } catch (error: unknown) {
+      if (isLikelyAbortError(error)) {
+        return
+      }
+      console.error('Error checking session:', error)
+      if (isRefreshTokenAuthError(error)) {
+        await clearLocalSupabaseSession()
+      }
+      setIsLoggedIn(false)
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId)
+      setAuthSessionChecked(true)
+    }
+  }, [resetClientAuthState])
+
+  const retrySessionBootstrap = useCallback(() => {
+    setAuthBootstrapError(null)
+    void runSessionCheck()
+  }, [runSessionCheck])
+
+  useEffect(() => {
+    void runSessionCheck().catch((e: unknown) => {
+      if (!isLikelyAbortError(e)) console.error('runSessionCheck:', e)
+      setAuthSessionChecked(true)
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'INITIAL_SESSION') return
+
+      if (event === 'SIGNED_IN' && session?.user) {
+        const runIdSnapshot = ++authBootstrapRunIdRef.current
+        const isStale = () => runIdSnapshot !== authBootstrapRunIdRef.current
+        setAuthBootstrapError(null)
+        userIdRef.current = session.user.id
+        setAuthSessionChecked(true)
+        setAuthVerifying(true)
+        let t: ReturnType<typeof setTimeout> | undefined
+        const timeoutPromise = new Promise<'timeout'>((resolve) => {
+          t = setTimeout(() => resolve('timeout'), AUTH_BOOTSTRAP_BUDGET_MS)
+        })
+        let signInSucceeded = false
+        try {
+          const winner = await Promise.race([
+            loadInitialDataRef
+              .current(session.user.id, session.access_token ?? null, {
+                gateLogin: true,
+                bootstrapStrictSla: true,
+                returnAfterGate: true,
+                bootstrapStalenessCheck: isStale,
+              })
+              .then((result) => {
+                if (isStale()) return 'stale' as const
+                if (!result.ok) {
+                  setIsLoggedIn(false)
+                  return 'failed' as const
+                }
+                signInSucceeded = true
+                return 'done' as const
+              }),
+            timeoutPromise,
+          ])
+          if (t) clearTimeout(t)
+          if (winner === 'timeout') {
+            if (runIdSnapshot === authBootstrapRunIdRef.current) {
+              authBootstrapRunIdRef.current += 1
+              console.error(`[Vocalis] Sign-in bootstrap exceeded ${AUTH_BOOTSTRAP_BUDGET_MS}ms`)
+              resetClientAuthState()
+              setAuthBootstrapError(
+                `Startup did not finish within ${AUTH_BOOTSTRAP_BUDGET_MS / 1000} seconds. Check network, API routes, and Supabase, then retry.`,
+              )
+              setAuthSessionChecked(true)
+            }
+          } else if (winner === 'done' && signInSucceeded && !isStale()) {
+            toast.success('Signed in', { description: 'Your account and permissions are ready.' })
+          }
+        } catch (e: unknown) {
+          if (!isLikelyAbortError(e)) console.error('loadInitialData after sign-in:', e)
+          setIsLoggedIn(false)
+        } finally {
+          if (t) clearTimeout(t)
+          if (!isStale()) setAuthVerifying(false)
+        }
+      } else if (event === 'SIGNED_OUT') {
+        resetClientAuthState()
+      } else if (event === 'TOKEN_REFRESHED') {
+        // Token refreshed successfully, no action needed
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [resetClientAuthState, runSessionCheck])
 
   const refetchProfileFromApi = useCallback(async () => {
     try {
@@ -941,24 +1067,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
         })()
         return
       }
+      const runIdSnapshot = ++authBootstrapRunIdRef.current
+      const isStale = () => runIdSnapshot !== authBootstrapRunIdRef.current
+      setAuthBootstrapError(null)
       setAuthVerifying(true)
+      let t: ReturnType<typeof setTimeout> | undefined
+      const timeoutPromise = new Promise<'timeout'>((resolve) => {
+        t = setTimeout(() => resolve('timeout'), AUTH_BOOTSTRAP_BUDGET_MS)
+      })
       try {
-        const { session } = await getSessionWithBudget(18_000)
+        const { session } = await getSessionWithBudget(AUTH_BOOTSTRAP_BUDGET_MS)
         if (!session?.user) {
           toast.error('No active session', { description: 'Sign in again.' })
           return
         }
         userIdRef.current = session.user.id
-        const result = await loadInitialDataRef.current(session.user.id, session.access_token ?? null, {
-          gateLogin: true,
-        })
-        if (result.ok) {
-          setIsLoggedIn(true)
-        } else if (result.errors.length) {
-          toast.error('Could not restore session', { description: result.errors.join(' · '), duration: 16_000 })
+        const winner = await Promise.race([
+          loadInitialDataRef
+            .current(session.user.id, session.access_token ?? null, {
+              gateLogin: true,
+              bootstrapStrictSla: true,
+              returnAfterGate: true,
+              bootstrapStalenessCheck: isStale,
+            })
+            .then((result) => {
+              if (isStale()) return 'stale' as const
+              if (!result.ok) {
+                if (result.errors.length) {
+                  toast.error('Could not restore session', {
+                    description: result.errors.join(' · '),
+                    duration: 16_000,
+                  })
+                }
+                return 'failed' as const
+              }
+              return 'done' as const
+            }),
+          timeoutPromise,
+        ])
+        if (t) clearTimeout(t)
+        if (winner === 'timeout') {
+          if (runIdSnapshot === authBootstrapRunIdRef.current) {
+            authBootstrapRunIdRef.current += 1
+            console.error(`[Vocalis] Session restore exceeded ${AUTH_BOOTSTRAP_BUDGET_MS}ms`)
+            resetClientAuthState()
+            setAuthBootstrapError(
+              `Startup did not finish within ${AUTH_BOOTSTRAP_BUDGET_MS / 1000} seconds. Check network, API routes, and Supabase, then retry.`,
+            )
+            setAuthSessionChecked(true)
+          }
         }
       } finally {
-        setAuthVerifying(false)
+        if (t) clearTimeout(t)
+        if (!isStale()) setAuthVerifying(false)
       }
     },
     [resetClientAuthState]
@@ -1038,6 +1199,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn,
       authSessionChecked,
       authVerifying,
+      authBootstrapError,
       profile,
       sessionAccount,
       viewAs,
@@ -1257,6 +1419,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsLoggedIn: handleSetIsLoggedIn,
       setProfile,
       isHydrated,
+      retrySessionBootstrap,
     }),
     [
       calls,
@@ -1270,6 +1433,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isLoggedIn,
       authSessionChecked,
       authVerifying,
+      authBootstrapError,
       profile,
       sessionAccount,
       isHydrated,
@@ -1279,6 +1443,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearViewAs,
       handleSetIsLoggedIn,
       setProfile,
+      retrySessionBootstrap,
     ]
   )
 

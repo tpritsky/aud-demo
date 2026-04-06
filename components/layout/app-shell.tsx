@@ -1,7 +1,8 @@
 'use client'
 
 import { ReactNode, Suspense } from 'react'
-import { Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { SidebarNav } from './sidebar-nav'
 import { Header } from './header'
 import { ViewAsBanner } from '@/components/view-as-banner'
@@ -14,13 +15,35 @@ interface AppShellProps {
 }
 
 export function AppShell({ children, title }: AppShellProps) {
-  const { isLoggedIn, isHydrated, authSessionChecked, authVerifying } = useAppStore()
+  const {
+    isLoggedIn,
+    isHydrated,
+    authSessionChecked,
+    authVerifying,
+    authBootstrapError,
+    retrySessionBootstrap,
+  } = useAppStore()
 
   // Show nothing while hydrating to prevent flash
   if (!isHydrated) {
     return (
       <div className="min-h-screen bg-muted/30 flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
+  if (authBootstrapError) {
+    return (
+      <div className="min-h-screen bg-muted/30 flex flex-col items-center justify-center gap-4 px-4">
+        <AlertCircle className="h-10 w-10 text-destructive" aria-hidden />
+        <div className="max-w-md text-center space-y-2">
+          <p className="text-sm font-medium text-foreground">Startup timed out</p>
+          <p className="text-xs text-muted-foreground">{authBootstrapError}</p>
+        </div>
+        <Button type="button" onClick={() => retrySessionBootstrap()}>
+          Retry
+        </Button>
       </div>
     )
   }

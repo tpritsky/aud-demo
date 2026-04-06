@@ -31,6 +31,8 @@ export interface AppState {
   authSessionChecked: boolean
   /** Running gated bootstrap after sign-in / session restore (required API checks). */
   authVerifying: boolean
+  /** Cold bootstrap exceeded the app’s startup time budget (see lib/auth/bootstrap-budget.ts). */
+  authBootstrapError: string | null
   isHydrated: boolean
   /**
    * Current user's profile (role + clinic). Loaded when logged in; may be swapped during super_admin view-as.
@@ -71,6 +73,8 @@ export interface AppActions {
   ) => void
   setViewAs: (viewAs: { userId: string; displayName: string } | null) => void
   clearViewAs: () => void | Promise<void>
+  /** Clear error and re-run session + gate (same as first load). */
+  retrySessionBootstrap: () => void
 }
 
 export type AppStore = AppState & AppActions
@@ -87,6 +91,7 @@ export const initialState: AppState = {
   isLoggedIn: false,
   authSessionChecked: false,
   authVerifying: false,
+  authBootstrapError: null,
   isHydrated: false,
   profile: null,
   sessionAccount: null,

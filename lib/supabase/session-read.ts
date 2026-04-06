@@ -18,10 +18,10 @@ export async function getSessionWithBudget(totalMs = 22_000): Promise<{
 }> {
   const t0 = Date.now()
   const minFallbackBudget = 10_500
-  const firstMs = Math.min(
-    12_000,
-    Math.max(3_500, totalMs - minFallbackBudget)
-  )
+  const firstMs =
+    totalMs < 6000
+      ? Math.max(400, Math.floor(totalMs * 0.42))
+      : Math.min(12_000, Math.max(3_500, totalMs - minFallbackBudget))
 
   const first = await Promise.race([
     supabase.auth.getSession(),

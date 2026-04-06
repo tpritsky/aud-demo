@@ -26,25 +26,29 @@ export type VerifiedProfileSnapshot = {
  * Validates that all backend reads required for a usable session succeed (service-role APIs, etc.).
  * Used to block showing the logged-in shell until critical data paths work.
  */
-export async function verifyRequiredBackendReads(opts: {
-  userId: string
-  token: string
-  role: ProfileRole | null
-  clinicId: string | null
-}): Promise<{
+export async function verifyRequiredBackendReads(
+  opts: {
+    userId: string
+    token: string
+    role: ProfileRole | null
+    clinicId: string | null
+  },
+  options?: { fetchTimeoutMs?: number }
+): Promise<{
   ok: boolean
   errors: string[]
   profileFromApi: VerifiedProfileSnapshot | null
 }> {
   const errors: string[] = []
   const { userId, token, role, clinicId } = opts
+  const ft = options?.fetchTimeoutMs
 
   let profileFromApi: VerifiedProfileSnapshot | null = null
 
   const pr = await fetchWithTimeout(
     '/api/profile',
     { headers: { Authorization: `Bearer ${token}` } },
-    15_000
+    ft ?? 15_000
   )
   if (!pr.ok) {
     errors.push(`Profile API (${pr.status}): ${await responseErrorSnippet(pr)}`)
@@ -76,12 +80,12 @@ export async function verifyRequiredBackendReads(opts: {
       fetchWithTimeout(
         '/api/super-admin/businesses',
         { headers: { Authorization: `Bearer ${token}` } },
-        22_000
+        ft ?? 22_000
       ),
       fetchWithTimeout(
         `/api/super-admin/user-dashboard-data?userId=${encodeURIComponent(userId)}`,
         { headers: { Authorization: `Bearer ${token}` } },
-        25_000
+        ft ?? 25_000
       ),
     ])
     if (!biz.ok) {
@@ -93,7 +97,11 @@ export async function verifyRequiredBackendReads(opts: {
   }
 
   if ((effectiveRole === 'admin' || effectiveRole === 'member') && effectiveClinicId) {
-    const cs = await fetchWithTimeout('/api/clinic/settings', { headers: { Authorization: `Bearer ${token}` } }, 22_000)
+    const cs = await fetchWithTimeout(
+      '/api/clinic/settings',
+      { headers: { Authorization: `Bearer ${token}` } },
+      ft ?? 22_000
+    )
     if (!cs.ok) {
       errors.push(`Clinic settings (${cs.status}): ${await responseErrorSnippet(cs)}`)
     }
