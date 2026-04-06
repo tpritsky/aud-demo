@@ -178,6 +178,16 @@ export function formatTextMessageTemplatesForPrompt(callAi: ClinicCallAiSettings
     .join('\n\n')
 }
 
+function postProcessDeliveryRules(d: VoiceTextDeliveryChannels): string {
+  if (d === 'email') {
+    return 'POST-CALL OUTPUT: send_sms MUST be false. send_email may be true only if caller_confirmed and the transcript contains an email they gave for this; set destination_email to that address (required when send_email true).'
+  }
+  if (d === 'both') {
+    return 'POST-CALL OUTPUT: SMS and email are BOTH allowed. If caller_confirmed: set send_sms true when caller agreed to a text and a phone number appears in the transcript (caller or system). Set send_email true when caller agreed to email AND any email address appears in the transcript — copy destination_email from the transcript. You MAY set BOTH send_sms and send_email true when both contact methods appear and consent applies. If only phone appears, send_sms true and send_email false. If only email appears, the reverse.'
+  }
+  return 'POST-CALL OUTPUT: send_email MUST be false. send_sms may be true only if caller_confirmed and a deliverable phone is implied in the transcript.'
+}
+
 /** Machine-oriented list for Claude post-call analysis (template ids + delivery rules). */
 export function formatTextMessageTemplatesForPostProcess(callAi: ClinicCallAiSettings): string {
   const items = (callAi.textMessageTemplates || [])
@@ -195,6 +205,7 @@ export function formatTextMessageTemplatesForPostProcess(callAi: ClinicCallAiSet
       return [
         `- template_id: ${t.id}`,
         `  delivery_channels: ${d}`,
+        `  ${postProcessDeliveryRules(d)}`,
         `  label: ${t.label}`,
         `  message_body: ${t.message.slice(0, 800)}`,
         `  when_to_send: ${t.instructions.slice(0, 500)}`,
@@ -541,9 +552,9 @@ export function buildClaudeCallContext(opts: {
   const postTpl = formatTextMessageTemplatesForPostProcess(opts.callAi)
   if (postTpl) {
     parts.push(
-      'Follow-up message templates (post-call delivery; template_id values must match exactly):\n' +
+      'Follow-up message templates (post-call automated delivery; template_id must match exactly):\n' +
         postTpl +
-        '\n\nIf the transcript shows the caller clearly consented to receive a specific template (e.g. agreed to a text, link, or email), include it in follow_up_messages. Only set caller_confirmed when they explicitly agreed. Respect delivery_channels: sms = SMS only; email = email only; both = you may set send_sms and/or send_email based on what they asked for and which contact details appear in the transcript. When send_email is true, set destination_email to an address explicitly given on the call.'
+        '\n\nInclude a row in follow_up_messages only when the caller clearly consented to that template. Follow the POST-CALL OUTPUT line on each template — it is authoritative. For delivery_channels "both", you must actively look for an email address in the transcript (caller spelling it, agent repeating it, or "send it to name at domain dot com") and set send_email true with destination_email when appropriate; do not default to SMS-only when email was given. When send_email is true, destination_email must be a complete address from the transcript.'
     )
   }
   return parts.join('\n\n')

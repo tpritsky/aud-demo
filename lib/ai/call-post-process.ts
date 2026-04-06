@@ -36,7 +36,8 @@ Extract structured facts for staff triage. Be conservative: if unsure, use null 
 Urgency: 1=routine, 2=soon, 3=same day, 4=immediate callback.
 Business value: 1=low, 2=moderate, 3=high, 4=strategic revenue or retention risk.
 Tags: short lowercase snake_case labels (e.g. billing_question, new_patient, hearing_aid_issue). Max 8 tags.
-If follow-up message templates are listed in clinic guidance, you may populate follow_up_messages only when the caller clearly consented; otherwise use an empty array.`
+If follow-up message templates are listed in clinic guidance, you may populate follow_up_messages only when the caller clearly consented; otherwise use an empty array.
+For each follow-up row: honor each template's delivery_channels rules from clinic guidance. When email delivery is allowed and the transcript contains an email the caller provided, set send_email true and destination_email to that exact address (do not invent addresses).`
 
 function getClient(): Anthropic {
   const key = process.env.CALUDE_CALL_SUMMARY_KEY1 || process.env.ANTHROPIC_API_KEY
@@ -97,14 +98,20 @@ function toolSchema(): Anthropic.Messages.Tool {
                 type: 'boolean',
                 description: 'True only if the caller explicitly agreed to receive this.',
               },
-              send_sms: { type: 'boolean', description: 'Whether to send SMS (allowed by template delivery rules).' },
+              send_sms: {
+                type: 'boolean',
+                description:
+                  'True when template allows SMS and caller consented; use false when template is email-only.',
+              },
               send_email: {
                 type: 'boolean',
-                description: 'Whether to send email (allowed by template delivery rules).',
+                description:
+                  'True when template allows email or both, caller consented, and transcript includes their email. Must be false when template is SMS-only.',
               },
               destination_email: {
                 type: ['string', 'null'],
-                description: 'Email from the transcript when send_email is true.',
+                description:
+                  'Required when send_email is true: copy the caller email from the transcript (e.g. user@domain.com). Null otherwise.',
               },
             },
             required: ['template_id', 'caller_confirmed', 'send_sms', 'send_email', 'destination_email'],
