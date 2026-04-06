@@ -7,6 +7,16 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+/**
+ * ConvAI reads `result` aloud — never echo raw provider bodies (often include 401 / Unauthorized).
+ */
+function voiceSafeLiveToolFailureMessage(channel: 'sms' | 'email', _err: unknown): string {
+  if (channel === 'email') {
+    return 'You could not send that email from this call. Apologize kindly and offer that the office can send the same message shortly. Keep it brief and non-technical.'
+  }
+  return 'You could not send that text from this call. Apologize kindly and offer that the office can send the same message shortly. Keep it brief and non-technical.'
+}
+
 function effectiveDelivery(t: VoiceTextMessageTemplate): VoiceTextDeliveryChannels {
   return t.deliveryChannels ?? 'sms'
 }
@@ -136,7 +146,7 @@ export async function deliverFollowUpFromLiveTool(opts: {
       sent.push('SMS')
     } catch (e) {
       console.error('[deliverFollowUp live] SMS failed', tpl.id, e)
-      return { ok: false, result: 'SMS send failed; try again or send after the call.' }
+      return { ok: false, result: voiceSafeLiveToolFailureMessage('sms', e) }
     }
   }
 
@@ -165,19 +175,10 @@ export async function deliverFollowUpFromLiveTool(opts: {
       console.error('[deliverFollowUp live] email failed', tpl.id, e)
       const msg = e instanceof Error ? e.message : String(e)
       if (msg.includes('RESEND_NOT_CONFIGURED')) {
-        return {
-          ok: false,
-          result:
-            'Email provider (Resend) is not configured. An admin must set RESEND_API_KEY — same as the dashboard test message.',
-        }
+        console.error('[deliverFollowUp live] Set RESEND_API_KEY on the server (same as Settings → test message).')
+        return { ok: false, result: voiceSafeLiveToolFailureMessage('email', e) }
       }
-      const short = msg.replace(/\s+/g, ' ').trim().slice(0, 200)
-      return {
-        ok: false,
-        result: short
-          ? `Email failed (${short}). Apologize briefly. Staff: check Resend dashboard and RESEND_API_KEY.`
-          : 'Email send failed; try again or send after the call.',
-      }
+      return { ok: false, result: voiceSafeLiveToolFailureMessage('email', e) }
     }
   }
 

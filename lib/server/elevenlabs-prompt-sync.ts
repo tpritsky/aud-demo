@@ -54,6 +54,8 @@ export function buildManagedPromptBlock(
         '',
         '**After success:** Say the email or text **was just sent**; they should check inbox or messages **now** (and spam for email).',
         '',
+        '**If the tool fails:** Follow the tool result’s tone: apologize briefly and offer office follow-up. Use plain language only — no numeric error codes or technical jargon.',
+        '',
         '**Parameters:** Exact `template_id`; `caller_confirmed: true`; `send_sms` / `send_email` per template and caller choice; `caller_phone_e164` (E.164) for SMS; `destination_email` for email.',
         '',
         '**Backup:** The system may retry from the transcript after the call only if live send did not happen — do not present that as the default plan.',

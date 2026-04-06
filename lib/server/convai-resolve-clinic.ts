@@ -32,19 +32,33 @@ export async function findClinicIdByElevenLabsAgentId(
  * Resolve agent_id for a conversation using the same ElevenLabs API key as sync.
  * Used to authenticate ConvAI webhook calls without a separate webhook secret.
  */
+export type ConvaiConversationLookup = {
+  agentId: string | null
+  /** ElevenLabs HTTP status when the conversation fetch failed (for logging / safe messaging). */
+  status?: number
+}
+
 export async function fetchConvaiConversationAgentId(
   apiKey: string,
   conversationId: string
-): Promise<string | null> {
+): Promise<ConvaiConversationLookup> {
   const cid = conversationId.trim()
-  if (!cid) return null
+  if (!cid) return { agentId: null }
   const res = await fetch(
     `https://api.elevenlabs.io/v1/convai/conversations/${encodeURIComponent(cid)}`,
     { headers: { 'xi-api-key': apiKey.trim() } }
   )
   if (!res.ok) {
-    console.warn('[convai conversation]', cid.slice(0, 12), res.status)
-    return null
+    if (res.status === 401 || res.status === 403) {
+      console.error(
+        '[convai conversation] ElevenLabs returned',
+        res.status,
+        '— check ELEVENLABS_API_KEY on the server (invalid or missing ConvAI access).'
+      )
+    } else {
+      console.warn('[convai conversation]', cid.slice(0, 12), res.status)
+    }
+    return { agentId: null, status: res.status }
   }
   try {
     const j = (await res.json()) as Record<string, unknown>
@@ -56,8 +70,9 @@ export async function fetchConvaiConversationAgentId(
           : typeof (j.agent as Record<string, unknown> | undefined)?.agent_id === 'string'
             ? ((j.agent as Record<string, unknown>).agent_id as string)
             : ''
-    return aid.trim() || null
+    const id = aid.trim() || null
+    return { agentId: id }
   } catch {
-    return null
+    return { agentId: null }
   }
 }

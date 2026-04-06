@@ -389,7 +389,6 @@ function sanitizeCallFlowPatch(raw: unknown): Partial<ClinicCallAiSettings['call
   if (typeof o.textNotes === 'string') out.textNotes = o.textNotes.slice(0, 4000)
   if (typeof o.schedulingNotes === 'string') out.schedulingNotes = o.schedulingNotes.slice(0, 4000)
   if (typeof o.notificationNotes === 'string') out.notificationNotes = o.notificationNotes.slice(0, 4000)
-  if (typeof o.confirmContactReadback === 'boolean') out.confirmContactReadback = o.confirmContactReadback
   return out
 }
 

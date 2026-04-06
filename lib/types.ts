@@ -60,11 +60,6 @@ export interface VoiceCallFlowSettings {
   schedulingNotes: string
   notificationStyle: 'urgent_only' | 'standard' | 'quiet'
   notificationNotes: string
-  /**
-   * When true (default), read phone numbers and email addresses back to the caller and ask for correction
-   * before sending a text or scheduling delivery.
-   */
-  confirmContactReadback: boolean
 }
 
 /** Preset SMS / scheduling texts the receptionist can send to callers (stored in callAi). */

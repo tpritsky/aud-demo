@@ -11,7 +11,7 @@ export function mergeVoiceCallFlow(
   }
 }
 
-/** Injected when confirmContactReadback is on — voice-optimized email/phone verification. */
+/** Always injected — voice-optimized email/phone verification before send. */
 const CONTACT_READBACK_RULES = `After the caller gives their phone number or email for SMS, email, or a follow-up, **read it back** and get a clear yes before you call any send tool or promise delivery.
 
 **Phone numbers:** Read back **digit by digit** (or short groups of 3–4). Ask if that is correct.
@@ -35,7 +35,6 @@ export const DEFAULT_VOICE_CALL_FLOW: VoiceCallFlowSettings = {
   schedulingNotes: '',
   notificationStyle: 'standard',
   notificationNotes: '',
-  confirmContactReadback: true,
 }
 
 const Q_PRESET: Record<VoiceCallFlowSettings['questionStyle'], string> = {
@@ -103,9 +102,7 @@ export function expandVoiceCallFlowToGuidance(flow: VoiceCallFlowSettings | unde
     f.notificationNotes?.trim() ? `Additional notes: ${f.notificationNotes.trim()}` : '',
     '',
     '### Contact confirmation',
-    f.confirmContactReadback === false
-      ? 'Do not require an extra read-back step for phone or email unless the caller seems uncertain.'
-      : CONTACT_READBACK_RULES,
+    CONTACT_READBACK_RULES,
   ]
   return parts.filter((p) => p !== '').join('\n')
 }

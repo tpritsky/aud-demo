@@ -341,25 +341,6 @@ export function SendTextMessagesSection({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-        <div className="px-4 py-4 sm:px-5 sm:py-4 flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="min-w-0 flex-1 space-y-1">
-            <h3 className="font-semibold text-foreground">Confirm phone &amp; email aloud</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              On by default: after the caller gives their number or address, read it back before sending. Phone:
-              digit-by-digit. Email: spell the part before @ letter-by-letter; for Gmail, Yahoo, Outlook, iCloud, etc.
-              say the domain as a phrase (&quot;at gmail dot com&quot;); for custom domains, spell the domain
-              letter-by-letter too.
-            </p>
-          </div>
-          <Switch
-            checked={flow.confirmContactReadback !== false}
-            onCheckedChange={(c) => setFlow({ confirmContactReadback: c === true })}
-            className="shrink-0 data-[state=checked]:bg-emerald-600"
-          />
-        </div>
-      </div>
-
       <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden border-l-4 border-l-emerald-500">
         <div className="px-4 py-4 sm:px-5 sm:py-5 flex flex-col sm:flex-row sm:items-center gap-4">
           <div

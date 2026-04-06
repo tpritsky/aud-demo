@@ -57,10 +57,22 @@ export async function POST(request: NextRequest) {
   }
 
   /** Trust agent_id only after we match ElevenLabs’ record for this conversation (no shared webhook secret). */
-  const agentIdFromEl = (await fetchConvaiConversationAgentId(apiKey, conversationId)) || ''
+  const { agentId: agentIdFromEl, status: elConversationStatus } = await fetchConvaiConversationAgentId(
+    apiKey,
+    conversationId
+  )
   if (!agentIdFromEl) {
+    const elAuthFailed = elConversationStatus === 401 || elConversationStatus === 403
+    if (elAuthFailed) {
+      console.error(
+        '[convai/send-follow-up] ElevenLabs conversation lookup failed with',
+        elConversationStatus,
+        '— fix ELEVENLABS_API_KEY on the server.'
+      )
+    }
     return NextResponse.json({
-      result: 'Could not verify this call with ElevenLabs. Try again in a moment.',
+      result:
+        'You could not send that message from this call. Apologize kindly and offer that the office can send the same text or email shortly. Keep your explanation brief and non-technical.',
     })
   }
 
