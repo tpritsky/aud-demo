@@ -173,21 +173,23 @@ const stats = [
   { value: '4.8/5', label: 'Caller satisfaction (demo)' },
 ]
 
-/** Patient reviews — swap `quote` for exact wording from your public review pages when available. */
+/** Staff / admin customers on Vocalis — swap `quote` for approved wording when you have final copy. */
 const LANDING_REVIEWS = [
   {
     quote:
-      'Everyone is so welcoming and professional. Scheduling is easy and the front desk always makes us feel like a priority.',
+      'Our phones used to hijack the whole morning. With Vocalis handling routine calls and scheduling questions, I finally get blocks of time for patients at the desk—and callbacks don’t pile up the way they used to.',
     author: 'Monica Hernandez',
-    practice: 'Tracy Dental Care',
+    role: 'Front office',
+    organization: 'Tracy Dental Care',
     imageSrc:
       'https://cdcssl.ibsrv.net/ibimg/smb/250x250_80/webmgr/15/r/y/631f6e0b3cbb7_IMG6831_20220912_1736.jpg.webp?d8ebfc918a062dc4b82b5184c64caa15',
   },
   {
     quote:
-      'The staff is friendly and thorough—they take time to explain treatment and the whole visit feels organized from start to finish.',
+      'Callers get consistent answers after hours and we’re not playing phone tag. It’s been a relief for our front desk—less chaos, clearer handoffs when someone does need to jump in.',
     author: 'Erline Poerwanto',
-    practice: 'Brookside Dental Care',
+    role: 'Office coordinator',
+    organization: 'Brookside Dental Care',
     imageSrc:
       'https://cdcssl.ibsrv.net/ibimg/smb/900x1200_80/webmgr/1o/p/j/erline20poerwanto.jpg.webp?efe4c64247ff2d1181963e1c4860c6b0',
   },
@@ -677,10 +679,13 @@ export function AudiologyLanding() {
       >
         <div className="container mx-auto px-4 lg:px-8">
           <div className="mx-auto mb-8 max-w-2xl text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Patient voices</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Customer stories</p>
             <h2 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-              What patients are saying
+              From teams using Vocalis
             </h2>
+            <p className="mt-3 text-sm text-muted-foreground sm:text-base">
+              Secretaries, coordinators, and front-desk staff at practices that run on Vocalis.
+            </p>
           </div>
           <div className="mx-auto grid max-w-4xl gap-6 sm:gap-8 md:grid-cols-2">
             {LANDING_REVIEWS.map((r) => (
@@ -693,7 +698,7 @@ export function AudiologyLanding() {
                   <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full ring-2 ring-primary/15 ring-offset-2 ring-offset-card">
                     <Image
                       src={r.imageSrc}
-                      alt={`${r.author}, ${r.practice}`}
+                      alt={`${r.author}, ${r.role}, ${r.organization}`}
                       width={112}
                       height={112}
                       className="h-full w-full object-cover"
@@ -702,7 +707,9 @@ export function AudiologyLanding() {
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-foreground">{r.author}</div>
-                    <div className="text-xs text-muted-foreground">{r.practice}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {r.role}, {r.organization}
+                    </div>
                   </div>
                 </div>
               </div>
