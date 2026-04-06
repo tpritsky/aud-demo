@@ -29,7 +29,7 @@ import {
   clearLocalSupabaseSession,
   isRefreshTokenAuthError,
 } from '@/lib/supabase/clear-stale-session'
-import { getSessionWithBudget } from '@/lib/supabase/session-read'
+import { getAccessTokenWithBudget, getSessionWithBudget } from '@/lib/supabase/session-read'
 import * as dbPatients from '@/lib/db/patients'
 import * as dbCalls from '@/lib/db/calls'
 import * as dbSequences from '@/lib/db/sequences'
@@ -239,8 +239,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       let token = accessTokenOverride?.trim() || null
       if (!token) {
-        const { data: { session } } = await supabase.auth.getSession()
-        token = session?.access_token ?? null
+        token = await getAccessTokenWithBudget(10_000)
       }
       if (token) {
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -337,7 +336,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       if (role && !sessionAcc) {
-        const { data: { session: authSession } } = await supabase.auth.getSession()
+        const { session: authSession } = await getSessionWithBudget(8_000)
         if (authSession?.user?.email) {
           const meta = authSession.user.user_metadata as { full_name?: string } | undefined
           sessionAcc = {
@@ -458,10 +457,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refetchProfileFromApi = useCallback(async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      const token = session?.access_token
+      const token = await getAccessTokenWithBudget(10_000)
       if (!token) return
       const res = await fetchWithTimeout('/api/profile', { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) return

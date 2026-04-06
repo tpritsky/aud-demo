@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { getAccessTokenWithBudget } from '@/lib/supabase/session-read'
 import { useAppStore } from '@/lib/store'
 import { formatElevenLabsSyncFailureMessage } from '@/lib/elevenlabs-sync-errors'
 import { clinicSettingsApiUrl, syncElevenLabsApiUrl } from '@/lib/view-as-clinic-api'
@@ -52,10 +52,7 @@ export function AgentWorkspaceTab({ section, superAdminClinicId = null }: Props)
   const [resolvedClinicId, setResolvedClinicId] = useState<string | null>(null)
 
   const authFetch = useCallback(async (url: string, init?: RequestInit) => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    const token = session?.access_token
+    const token = await getAccessTokenWithBudget(12_000)
     if (!token) throw new Error('Not signed in')
     return fetch(url, {
       ...init,

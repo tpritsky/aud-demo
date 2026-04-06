@@ -12,10 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { supabase } from '@/lib/supabase/client'
 import type { ElevenLabsPhoneNumberOption } from '@/lib/types'
 import { formatPhoneDisplay } from '@/lib/phone-format'
-import { cn } from '@/lib/utils'
+import { cn, fetchWithTimeout } from '@/lib/utils'
+import { getAccessTokenWithBudget } from '@/lib/supabase/session-read'
 
 export type ConvaiLinePhoneFieldMode = 'member-open' | 'member-locked' | 'admin-select'
 
@@ -57,10 +57,7 @@ export function ConvaiLinePhoneField({
     setLoad('loading')
     ;(async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
-        const token = session?.access_token
+        const token = await getAccessTokenWithBudget(12_000)
         if (!token) {
           if (!cancelled) setLoad('error')
           return
@@ -68,9 +65,11 @@ export function ConvaiLinePhoneField({
         const q = phonePoolClinicId?.trim()
           ? `?clinicId=${encodeURIComponent(phonePoolClinicId.trim())}`
           : ''
-        const res = await fetch(`/api/elevenlabs/phone-numbers${q}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const res = await fetchWithTimeout(
+          `/api/elevenlabs/phone-numbers${q}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+          22_000
+        )
         const data = await res.json().catch(() => ({}))
         if (cancelled) return
         if (!res.ok) {

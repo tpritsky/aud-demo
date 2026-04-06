@@ -50,3 +50,10 @@ export async function getSessionWithBudget(totalMs = 14_000): Promise<{
 
   return { session: second.data.session, error: second.error ?? null }
 }
+
+/** Access token for `Authorization: Bearer` calls — never block forever on a stuck `getSession()`. */
+export async function getAccessTokenWithBudget(totalMs = 12_000): Promise<string | null> {
+  const { session } = await getSessionWithBudget(totalMs)
+  const t = session?.access_token?.trim()
+  return t || null
+}

@@ -45,8 +45,9 @@ import {
   Settings,
 } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
-import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { getAccessTokenWithBudget } from '@/lib/supabase/session-read'
+import { fetchWithTimeout, isLikelyAbortError } from '@/lib/utils'
 import type { AgentConfig, Call } from '@/lib/types'
 import { formatDateTime, formatDuration } from '@/lib/format'
 import {
@@ -101,8 +102,10 @@ function roleAtBusinessLabel(role: string): string {
   return role
 }
 
-function getToken() {
-  return supabase.auth.getSession().then(({ data }) => data.session?.access_token ?? null)
+const SUPER_ADMIN_FETCH_MS = 22_000
+
+async function getToken() {
+  return getAccessTokenWithBudget(12_000)
 }
 
 export default function BusinessesPage() {
@@ -200,10 +203,17 @@ export default function BusinessesPage() {
   const loadBusinesses = useCallback(async () => {
     try {
       const token = await getToken()
-      if (!token) return
-      const res = await fetch('/api/super-admin/businesses', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      if (!token) {
+        toast.error('Could not read your session', {
+          description: 'Refresh the page or sign in again.',
+        })
+        return
+      }
+      const res = await fetchWithTimeout(
+        '/api/super-admin/businesses',
+        { headers: { Authorization: `Bearer ${token}` } },
+        SUPER_ADMIN_FETCH_MS
+      )
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         toast.error(typeof data.error === 'string' ? data.error : 'Failed to load businesses')
@@ -211,8 +221,12 @@ export default function BusinessesPage() {
       }
       setBusinesses(data.businesses || [])
     } catch (e) {
-      console.error('loadBusinesses:', e)
-      toast.error('Failed to load businesses')
+      if (isLikelyAbortError(e)) {
+        toast.error('Request timed out', { description: 'Check your connection and try again.' })
+      } else {
+        console.error('loadBusinesses:', e)
+        toast.error('Failed to load businesses')
+      }
     }
   }, [])
 
@@ -224,9 +238,11 @@ export default function BusinessesPage() {
         toast.error('Session expired — sign in again')
         return
       }
-      const res = await fetch('/api/super-admin/users', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await fetchWithTimeout(
+        '/api/super-admin/users',
+        { headers: { Authorization: `Bearer ${token}` } },
+        SUPER_ADMIN_FETCH_MS
+      )
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         toast.error(typeof data.error === 'string' ? data.error : 'Failed to load users')
@@ -234,8 +250,12 @@ export default function BusinessesPage() {
       }
       setUsers(data.users || [])
     } catch (e) {
-      console.error('loadUsers:', e)
-      toast.error('Failed to load users')
+      if (isLikelyAbortError(e)) {
+        toast.error('Request timed out', { description: 'Check your connection and try again.' })
+      } else {
+        console.error('loadUsers:', e)
+        toast.error('Failed to load users')
+      }
     } finally {
       setUsersLoading(false)
     }
