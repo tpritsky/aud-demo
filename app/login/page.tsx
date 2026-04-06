@@ -30,7 +30,7 @@ export default function LoginPage() {
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      await prepareClientForFreshSignIn(900)
+      await prepareClientForFreshSignIn()
       if (cancelled) return
       router.replace(safeNextTarget())
     })()

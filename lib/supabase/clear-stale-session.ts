@@ -47,12 +47,11 @@ export async function clearLocalSupabaseSession(): Promise<void> {
 }
 
 /**
- * Before showing the password form: drop cached tokens without calling global sign-out
- * (global `signOut` can hang on the network — same class of bug as stuck `getSession`).
- * Sync storage wipe first, then bounded local sign-out.
+ * Before showing the password form: local sign-out only (bounded). Avoid manually wiping all `sb-*`
+ * localStorage keys — @supabase/ssr keeps the session in cookies; aggressive wipes can desync storage
+ * and make reloads look “logged out” while cookies still exist, or vice versa.
  */
-export async function prepareClientForFreshSignIn(maxWaitMs = 900): Promise<void> {
-  wipeSupabaseBrowserStorage()
+export async function prepareClientForFreshSignIn(maxWaitMs = 1200): Promise<void> {
   await Promise.race([
     (async () => {
       try {
@@ -63,5 +62,4 @@ export async function prepareClientForFreshSignIn(maxWaitMs = 900): Promise<void
     })(),
     new Promise<void>((resolve) => setTimeout(resolve, maxWaitMs)),
   ])
-  wipeSupabaseBrowserStorage()
 }

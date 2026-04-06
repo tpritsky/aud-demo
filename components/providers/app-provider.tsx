@@ -29,6 +29,7 @@ import {
   clearLocalSupabaseSession,
   isRefreshTokenAuthError,
 } from '@/lib/supabase/clear-stale-session'
+import { getSessionWithBudget } from '@/lib/supabase/session-read'
 import * as dbPatients from '@/lib/db/patients'
 import * as dbCalls from '@/lib/db/calls'
 import * as dbSequences from '@/lib/db/sequences'
@@ -154,10 +155,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        const { data: { session }, error } = await supabase.auth.getSession()
+        const { session, error } = await getSessionWithBudget(14_000)
 
         if (error && isRefreshTokenAuthError(error)) {
-          console.warn('Session refresh failed; clearing local session:', error.message)
+          console.warn(
+            'Session refresh failed; clearing local session:',
+            error instanceof Error ? error.message : String(error),
+          )
           await clearLocalSupabaseSession()
           setIsLoggedIn(false)
           return
@@ -166,7 +170,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           userIdRef.current = session.user.id
           setIsLoggedIn(true)
-          void loadInitialData(session.user.id).catch((e: unknown) => {
+          void loadInitialData(session.user.id, session.access_token ?? null).catch((e: unknown) => {
             if (!isLikelyAbortError(e)) console.error('loadInitialData (bootstrap):', e)
           })
         } else {
@@ -195,7 +199,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         userIdRef.current = session.user.id
         setIsLoggedIn(true)
         try {
-          await loadInitialData(session.user.id)
+          await loadInitialData(session.user.id, session.access_token ?? null)
         } catch (e: unknown) {
           if (!isLikelyAbortError(e)) console.error('loadInitialData after sign-in:', e)
         }
@@ -213,7 +217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [resetClientAuthState])
 
   // Load initial data from Supabase
-  const loadInitialData = async (userId: string) => {
+  const loadInitialData = async (userId: string, accessTokenOverride?: string | null) => {
     try {
       setIsLoading(true)
 
@@ -228,42 +232,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } | null = null
       let onboardingFromApi: boolean | null = null
 
-      const { data: { session } } = await supabase.auth.getSession()
-      const token = session?.access_token
+      let token = accessTokenOverride?.trim() || null
+      if (!token) {
+        const { data: { session } } = await supabase.auth.getSession()
+        token = session?.access_token ?? null
+      }
       if (token) {
-        try {
-          const res = await fetchWithTimeout('/api/profile', {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-          if (res.ok) {
-            const data = (await res.json()) as {
-              role?: string
-              clinicId?: string | null
-              email?: string | null
-              fullName?: string | null
-              needsClinicOnboarding?: boolean
-            }
-            if (typeof data.needsClinicOnboarding === 'boolean') {
-              onboardingFromApi = data.needsClinicOnboarding
-            }
-            if (data.role === 'super_admin' || data.role === 'admin' || data.role === 'member') {
-              role = data.role
-              clinicId = data.clinicId ?? null
-            }
-            if (
-              typeof data.email === 'string' &&
-              data.email &&
-              (data.role === 'super_admin' || data.role === 'admin' || data.role === 'member')
-            ) {
-              sessionAcc = {
-                email: data.email,
-                fullName: data.fullName ?? null,
-                role: data.role as 'super_admin' | 'admin' | 'member',
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const res = await fetchWithTimeout(
+              '/api/profile',
+              { headers: { Authorization: `Bearer ${token}` } },
+              14_000
+            )
+            if (res.ok) {
+              const data = (await res.json()) as {
+                role?: string
+                clinicId?: string | null
+                email?: string | null
+                fullName?: string | null
+                needsClinicOnboarding?: boolean
               }
+              if (typeof data.needsClinicOnboarding === 'boolean') {
+                onboardingFromApi = data.needsClinicOnboarding
+              }
+              if (data.role === 'super_admin' || data.role === 'admin' || data.role === 'member') {
+                role = data.role
+                clinicId = data.clinicId ?? null
+              }
+              if (
+                typeof data.email === 'string' &&
+                data.email &&
+                (data.role === 'super_admin' || data.role === 'admin' || data.role === 'member')
+              ) {
+                sessionAcc = {
+                  email: data.email,
+                  fullName: data.fullName ?? null,
+                  role: data.role as 'super_admin' | 'admin' | 'member',
+                }
+              }
+              break
             }
+            if (res.status === 401) break
+          } catch {
+            // retry
           }
-        } catch (_) {
-          // Fall through to direct Supabase fetch
+          await new Promise((r) => setTimeout(r, 350 * (attempt + 1)))
         }
       }
       if (role === null) {
@@ -317,30 +331,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (role && !sessionAcc && session?.user?.email) {
-        const meta = session.user.user_metadata as { full_name?: string } | undefined
-        sessionAcc = {
-          email: session.user.email,
-          fullName: typeof meta?.full_name === 'string' ? meta.full_name : null,
-          role,
+      if (role && !sessionAcc) {
+        const { data: { session: authSession } } = await supabase.auth.getSession()
+        if (authSession?.user?.email) {
+          const meta = authSession.user.user_metadata as { full_name?: string } | undefined
+          sessionAcc = {
+            email: authSession.user.email,
+            fullName: typeof meta?.full_name === 'string' ? meta.full_name : null,
+            role,
+          }
         }
       }
 
       if (!role) {
-        toast.error('Account not provisioned', {
-          description: 'Your login is not linked to an organization. You have been signed out.',
-        })
-        try {
-          const { error } = await supabase.auth.signOut({ scope: 'global' })
-          if (error) throw error
-        } catch {
-          await clearLocalSupabaseSession()
-        }
-        resetClientAuthState()
-        if (typeof window !== 'undefined') {
-          window.location.replace('/')
-        }
-        return
+        console.warn(
+          '[Vocalis] No profile role after API + DB fallbacks; staying signed in. Ask an admin to assign your account.',
+        )
       }
 
       let needsClinicOnboarding = false

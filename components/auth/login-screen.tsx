@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -191,6 +192,11 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           )}
         </CardContent>
       </Card>
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        <Link href="/" className="underline underline-offset-2 hover:text-foreground">
+          Back to home
+        </Link>
+      </p>
     </div>
   )
 }
