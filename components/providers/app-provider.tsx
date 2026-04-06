@@ -175,16 +175,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return
         }
 
+        // End "Checking your session" as soon as we know if a session exists — gated load can take a while.
+        setAuthSessionChecked(true)
+
         if (session?.user) {
           userIdRef.current = session.user.id
           setAuthVerifying(true)
-          const result = await loadInitialDataRef.current(session.user.id, session.access_token ?? null, {
-            gateLogin: true,
-          })
-          if (result.ok) {
-            setIsLoggedIn(true)
-          } else {
-            setIsLoggedIn(false)
+          try {
+            const result = await loadInitialDataRef.current(session.user.id, session.access_token ?? null, {
+              gateLogin: true,
+            })
+            if (result.ok) {
+              setIsLoggedIn(true)
+            } else {
+              setIsLoggedIn(false)
+            }
+          } finally {
+            setAuthVerifying(false)
           }
         } else {
           setIsLoggedIn(false)

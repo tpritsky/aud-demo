@@ -72,20 +72,21 @@ export async function verifyRequiredBackendReads(opts: {
   }
 
   if (effectiveRole === 'super_admin') {
-    const biz = await fetchWithTimeout(
-      '/api/super-admin/businesses',
-      { headers: { Authorization: `Bearer ${token}` } },
-      22_000
-    )
+    const [biz, dash] = await Promise.all([
+      fetchWithTimeout(
+        '/api/super-admin/businesses',
+        { headers: { Authorization: `Bearer ${token}` } },
+        22_000
+      ),
+      fetchWithTimeout(
+        `/api/super-admin/user-dashboard-data?userId=${encodeURIComponent(userId)}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+        25_000
+      ),
+    ])
     if (!biz.ok) {
       errors.push(`Super Admin — businesses (${biz.status}): ${await responseErrorSnippet(biz)}`)
     }
-
-    const dash = await fetchWithTimeout(
-      `/api/super-admin/user-dashboard-data?userId=${encodeURIComponent(userId)}`,
-      { headers: { Authorization: `Bearer ${token}` } },
-      25_000
-    )
     if (!dash.ok) {
       errors.push(`Super Admin — dashboard data (${dash.status}): ${await responseErrorSnippet(dash)}`)
     }
