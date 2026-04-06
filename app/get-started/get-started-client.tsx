@@ -20,18 +20,20 @@ export function GetStartedClient({
   redirectQueryString: string
 }) {
   const router = useRouter()
-  const { isHydrated, isLoggedIn, profile, setProfile } = useAppStore()
+  const { isHydrated, isLoggedIn, profile, setProfile, authSessionChecked, authVerifying } = useAppStore()
 
   useEffect(() => {
     gsLog('route_effect', {
       isHydrated,
+      authSessionChecked,
+      authVerifying,
       isLoggedIn,
       setupClinicId,
       profileRole: profile?.role ?? null,
       clinicId: profile?.clinicId ?? null,
       needsClinicOnboarding: profile?.needsClinicOnboarding ?? null,
     })
-    if (!isHydrated) return
+    if (!isHydrated || !authSessionChecked || authVerifying) return
     if (!isLoggedIn) {
       const q = redirectQueryString
       const dest = q ? `/dashboard?${q}` : '/dashboard'
@@ -51,12 +53,23 @@ export function GetStartedClient({
       gsLog('redirect', { reason: 'onboarding_not_needed', to: '/dashboard' })
       router.replace('/dashboard')
     }
-  }, [isHydrated, isLoggedIn, profile, router, setupClinicId, redirectQueryString])
+  }, [
+    isHydrated,
+    authSessionChecked,
+    authVerifying,
+    isLoggedIn,
+    profile,
+    router,
+    setupClinicId,
+    redirectQueryString,
+  ])
 
   useEffect(() => {
     const branch = !isHydrated
       ? 'waiting_hydrate'
-      : !isLoggedIn
+      : !authSessionChecked || authVerifying
+        ? 'waiting_auth_gate'
+        : !isLoggedIn
         ? 'redirecting_unauthenticated'
         : isLoggedIn && profile?.role === 'super_admin' && setupClinicId
           ? 'wizard_super_admin'
@@ -70,9 +83,9 @@ export function GetStartedClient({
                   ? 'spinner_logged_in_fallback'
                   : 'fallback'
     gsLog('ui_branch', { branch })
-  }, [isHydrated, isLoggedIn, profile, setupClinicId])
+  }, [isHydrated, authSessionChecked, authVerifying, isLoggedIn, profile, setupClinicId])
 
-  if (!isHydrated) {
+  if (!isHydrated || !authSessionChecked || authVerifying) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50/80 gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />

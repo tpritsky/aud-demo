@@ -27,6 +27,10 @@ export interface AppState {
   agentConfig: AgentConfig
   kpiData: KPIData
   isLoggedIn: boolean
+  /** First session probe finished (page load or cold start). */
+  authSessionChecked: boolean
+  /** Running gated bootstrap after sign-in / session restore (required API checks). */
+  authVerifying: boolean
   isHydrated: boolean
   /**
    * Current user's profile (role + clinic). Loaded when logged in; may be swapped during super_admin view-as.
@@ -81,6 +85,8 @@ export const initialState: AppState = {
   agentConfig: bootstrapAgentConfig,
   kpiData: zeroKpiData,
   isLoggedIn: false,
+  authSessionChecked: false,
+  authVerifying: false,
   isHydrated: false,
   profile: null,
   sessionAccount: null,

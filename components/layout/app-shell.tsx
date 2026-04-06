@@ -1,6 +1,7 @@
 'use client'
 
 import { ReactNode, Suspense } from 'react'
+import { Loader2 } from 'lucide-react'
 import { SidebarNav } from './sidebar-nav'
 import { Header } from './header'
 import { ViewAsBanner } from '@/components/view-as-banner'
@@ -13,7 +14,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ children, title }: AppShellProps) {
-  const { isLoggedIn, setIsLoggedIn, isHydrated } = useAppStore()
+  const { isLoggedIn, isHydrated, authSessionChecked, authVerifying } = useAppStore()
 
   // Show nothing while hydrating to prevent flash
   if (!isHydrated) {
@@ -24,8 +25,30 @@ export function AppShell({ children, title }: AppShellProps) {
     )
   }
 
+  if (!authSessionChecked) {
+    return (
+      <div className="min-h-screen bg-muted/30 flex flex-col items-center justify-center gap-3 px-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden />
+        <p className="text-center text-sm text-muted-foreground">Checking your session…</p>
+      </div>
+    )
+  }
+
+  if (authVerifying) {
+    return (
+      <div className="min-h-screen bg-muted/30 flex flex-col items-center justify-center gap-3 px-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden />
+        <p className="text-center text-sm font-medium text-foreground">Verifying your account</p>
+        <p className="max-w-md text-center text-xs text-muted-foreground">
+          Loading profile, permissions, and required data. If something is misconfigured you will see every error —
+          you will not be signed in until checks pass.
+        </p>
+      </div>
+    )
+  }
+
   if (!isLoggedIn) {
-    return <LoginScreen onLogin={() => setIsLoggedIn(true)} />
+    return <LoginScreen />
   }
 
   return (

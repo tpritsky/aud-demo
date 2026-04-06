@@ -20,11 +20,7 @@ import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { supportMailto } from '@/lib/support'
 
-interface LoginScreenProps {
-  onLogin: () => void
-}
-
-export function LoginScreen({ onLogin }: LoginScreenProps) {
+export function LoginScreen() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -75,8 +71,6 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       }
 
       if (data.session) {
-        toast.success('Logged in successfully')
-        onLogin()
         router.replace('/dashboard')
       }
     } catch (error) {

@@ -11,17 +11,17 @@ const BYPASS =
 export function ClinicOnboardingGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { isHydrated, isLoggedIn, profile } = useAppStore()
+  const { isHydrated, isLoggedIn, profile, authSessionChecked, authVerifying } = useAppStore()
 
   useEffect(() => {
-    if (!isHydrated || !isLoggedIn || !pathname) return
+    if (!isHydrated || !authSessionChecked || authVerifying || !isLoggedIn || !pathname) return
     if (BYPASS.test(pathname)) return
     const p = profile
     if (!p || p.role === 'super_admin') return
     if (p.clinicId && p.needsClinicOnboarding) {
       router.replace('/get-started')
     }
-  }, [isHydrated, isLoggedIn, pathname, profile, router])
+  }, [isHydrated, authSessionChecked, authVerifying, isLoggedIn, pathname, profile, router])
 
   return children
 }

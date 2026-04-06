@@ -29,11 +29,8 @@ import {
   clearLocalSupabaseSession,
   isRefreshTokenAuthError,
 } from '@/lib/supabase/clear-stale-session'
-import {
-  getAccessTokenWithBudget,
-  getSessionWithBudget,
-  vocalisAuthInvalidEventName,
-} from '@/lib/supabase/session-read'
+import { getAccessTokenWithBudget, getSessionWithBudget } from '@/lib/supabase/session-read'
+import { verifyRequiredBackendReads } from '@/lib/auth/bootstrap-verify'
 import * as dbPatients from '@/lib/db/patients'
 import * as dbCalls from '@/lib/db/calls'
 import * as dbSequences from '@/lib/db/sequences'
@@ -53,6 +50,9 @@ type ProfileSnapshot = {
   needsClinicOnboarding?: boolean
 }
 
+type LoadInitialDataOptions = { gateLogin?: boolean }
+type LoadInitialDataResult = { ok: boolean; errors: string[] }
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [calls, setCalls] = useState<Call[]>([])
   const [patients, setPatients] = useState<Patient[]>([])
@@ -62,6 +62,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([])
   const [agentConfig, setAgentConfig] = useState<AgentConfig>(initialState.agentConfig)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [authSessionChecked, setAuthSessionChecked] = useState(false)
+  const [authVerifying, setAuthVerifying] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [profile, setProfileState] = useState<ProfileSnapshot | null>(null)
@@ -102,6 +104,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resetClientAuthState = useCallback(() => {
     userIdRef.current = null
     setIsLoggedIn(false)
+    setAuthVerifying(false)
     setProfileState(null)
     realProfileRef.current = null
     setSessionAccount(null)
@@ -141,19 +144,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('unhandledrejection', onUnhandledRejection)
   }, [])
 
-  /** Token recovery confirmed there is no Supabase user — drop stale profile / "Super admin" shell. */
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const onInvalid = () => {
-      userIdRef.current = null
-      resetClientAuthState()
-      void clearLocalSupabaseSession()
-      toast.error('Session ended', { description: 'Sign in again to continue.' })
-    }
-    window.addEventListener(vocalisAuthInvalidEventName, onInvalid)
-    return () => window.removeEventListener(vocalisAuthInvalidEventName, onInvalid)
-  }, [resetClientAuthState])
-
   /**
    * Unlock the shell before any async auth work. `getSession()` can stall indefinitely after deploy / bad
    * client state; gating `isHydrated` on it caused a permanent “Loading…” with no relation to “wait longer”.
@@ -166,6 +156,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Check Supabase session on mount (background; does not control isHydrated)
   useEffect(() => {
     const checkSession = async () => {
+      setAuthSessionChecked(false)
       try {
         if (!hasRealSupabaseConfig()) {
           setIsLoggedIn(false)
@@ -186,10 +177,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (session?.user) {
           userIdRef.current = session.user.id
-          setIsLoggedIn(true)
-          void loadInitialData(session.user.id, session.access_token ?? null).catch((e: unknown) => {
-            if (!isLikelyAbortError(e)) console.error('loadInitialData (bootstrap):', e)
+          setAuthVerifying(true)
+          const result = await loadInitialDataRef.current(session.user.id, session.access_token ?? null, {
+            gateLogin: true,
           })
+          if (result.ok) {
+            setIsLoggedIn(true)
+          } else {
+            setIsLoggedIn(false)
+          }
         } else {
           setIsLoggedIn(false)
         }
@@ -203,22 +199,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           setIsLoggedIn(false)
         }
+      } finally {
+        setAuthSessionChecked(true)
       }
     }
 
     void checkSession().catch((e: unknown) => {
       if (!isLikelyAbortError(e)) console.error('checkSession:', e)
+      setAuthSessionChecked(true)
     })
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'INITIAL_SESSION') return
+
       if (event === 'SIGNED_IN' && session?.user) {
         userIdRef.current = session.user.id
-        setIsLoggedIn(true)
+        setAuthVerifying(true)
         try {
-          await loadInitialData(session.user.id, session.access_token ?? null)
+          const result = await loadInitialDataRef.current(session.user.id, session.access_token ?? null, {
+            gateLogin: true,
+          })
+          if (result.ok) {
+            setIsLoggedIn(true)
+            toast.success('Signed in', { description: 'Your account and permissions are ready.' })
+          } else {
+            setIsLoggedIn(false)
+          }
         } catch (e: unknown) {
           if (!isLikelyAbortError(e)) console.error('loadInitialData after sign-in:', e)
+          setIsLoggedIn(false)
+        } finally {
+          setAuthVerifying(false)
         }
       } else if (event === 'SIGNED_OUT') {
         resetClientAuthState()
@@ -234,7 +246,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [resetClientAuthState])
 
   // Load initial data from Supabase
-  const loadInitialData = async (userId: string, accessTokenOverride?: string | null) => {
+  const loadInitialData = async (
+    userId: string,
+    accessTokenOverride?: string | null,
+    options?: LoadInitialDataOptions
+  ): Promise<LoadInitialDataResult> => {
+    const gateLogin = options?.gateLogin === true
     try {
       setIsLoading(true)
 
@@ -368,6 +385,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
         console.warn(
           '[Vocalis] No profile role after API + DB fallbacks; staying signed in. Ask an admin to assign your account.',
         )
+      }
+
+      if (gateLogin) {
+        if (!token?.trim()) {
+          const errors = ['No access token from this session — try signing in again.']
+          console.error('[Vocalis] Login gate:', errors)
+          toast.error('Sign-in blocked', { description: errors.join(' · '), duration: 20_000 })
+          resetClientAuthState()
+          void supabase.auth.signOut({ scope: 'global' })
+          setIsLoading(false)
+          return { ok: false, errors }
+        }
+        const gate = await verifyRequiredBackendReads({
+          userId,
+          token,
+          role,
+          clinicId,
+        })
+        if (!gate.ok) {
+          console.error('[Vocalis] Login gate failed:', gate.errors)
+          toast.error('Sign-in blocked — required data could not be loaded', {
+            description: gate.errors.join(' · '),
+            duration: 20_000,
+          })
+          resetClientAuthState()
+          void supabase.auth.signOut({ scope: 'global' })
+          setIsLoading(false)
+          return { ok: false, errors: gate.errors }
+        }
+        if (gate.profileFromApi) {
+          role = gate.profileFromApi.role
+          clinicId = gate.profileFromApi.clinicId
+          if (sessionAcc) {
+            sessionAcc = { ...sessionAcc, role: gate.profileFromApi.role }
+          }
+        }
       }
 
       let needsClinicOnboarding = false
@@ -506,16 +559,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         setAgentConfig({ ...bootstrapAgentConfig, clinicName })
       }
+      return { ok: true, errors: [] }
     } catch (error: unknown) {
       if (isLikelyAbortError(error)) {
         setIsLoading(false)
-        return
+        return { ok: false, errors: ['Request was cancelled (navigation or timeout).'] }
       }
       console.error('Error loading initial data:', error)
+      const msg = error instanceof Error ? error.message : 'Unknown error'
       toast.error('Failed to load data', {
         description: 'Please refresh the page',
       })
       setIsLoading(false)
+      return { ok: false, errors: [msg] }
+    } finally {
+      if (gateLogin) setAuthVerifying(false)
     }
   }
 
@@ -859,24 +917,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return call
   }
 
-  const handleSetIsLoggedIn = async (value: boolean) => {
-    if (!value) {
-      resetClientAuthState()
-      void (async () => {
-        try {
-          await Promise.race([
-            supabase.auth.signOut({ scope: 'global' }),
-            new Promise<void>((resolve) => setTimeout(resolve, 5000)),
-          ])
-        } catch (e) {
-          console.warn('[Vocalis] signOut:', e)
+  const handleSetIsLoggedIn = useCallback(
+    async (value: boolean) => {
+      if (!value) {
+        resetClientAuthState()
+        void (async () => {
+          try {
+            await Promise.race([
+              supabase.auth.signOut({ scope: 'global' }),
+              new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+            ])
+          } catch (e) {
+            console.warn('[Vocalis] signOut:', e)
+          }
+          await clearLocalSupabaseSession()
+        })()
+        return
+      }
+      setAuthVerifying(true)
+      try {
+        const { session } = await getSessionWithBudget(18_000)
+        if (!session?.user) {
+          toast.error('No active session', { description: 'Sign in again.' })
+          return
         }
-        await clearLocalSupabaseSession()
-      })()
-      return
-    }
-    setIsLoggedIn(true)
-  }
+        userIdRef.current = session.user.id
+        const result = await loadInitialDataRef.current(session.user.id, session.access_token ?? null, {
+          gateLogin: true,
+        })
+        if (result.ok) {
+          setIsLoggedIn(true)
+        } else if (result.errors.length) {
+          toast.error('Could not restore session', { description: result.errors.join(' · '), duration: 16_000 })
+        }
+      } finally {
+        setAuthVerifying(false)
+      }
+    },
+    [resetClientAuthState]
+  )
 
   // Calculate KPI data dynamically from calls
   const kpiData = useMemo(() => {
@@ -950,6 +1029,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       agentConfig,
       kpiData,
       isLoggedIn,
+      authSessionChecked,
+      authVerifying,
       profile,
       sessionAccount,
       viewAs,
@@ -1170,7 +1251,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProfile,
       isHydrated,
     }),
-    [calls, patients, sequences, callbackTasks, scheduledCheckIns, activityEvents, agentConfig, kpiData, isLoggedIn, profile, sessionAccount, isHydrated, isLoading, viewAs, setViewAs, clearViewAs]
+    [
+      calls,
+      patients,
+      sequences,
+      callbackTasks,
+      scheduledCheckIns,
+      activityEvents,
+      agentConfig,
+      kpiData,
+      isLoggedIn,
+      authSessionChecked,
+      authVerifying,
+      profile,
+      sessionAccount,
+      isHydrated,
+      isLoading,
+      viewAs,
+      setViewAs,
+      clearViewAs,
+      handleSetIsLoggedIn,
+      setProfile,
+    ]
   )
 
   // Poll for due tasks and check-ins every minute and trigger calls

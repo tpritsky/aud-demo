@@ -1,15 +1,6 @@
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase/client'
 
-const AUTH_INVALID_EVENT = 'vocalis:auth-invalid'
-
-function dispatchAuthInvalid(reason: string) {
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(new CustomEvent(AUTH_INVALID_EVENT, { detail: { reason } }))
-}
-
-export const vocalisAuthInvalidEventName = AUTH_INVALID_EVENT
-
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
@@ -73,7 +64,8 @@ export async function getSessionWithBudget(totalMs = 22_000): Promise<{
 
 /**
  * Access token for `Authorization: Bearer` API calls.
- * Uses a generous budget, then `refreshSession`, then clears client UI if Supabase reports no user.
+ * Uses a generous budget, then `refreshSession`, then a final `getSession` attempt.
+ * Does not sign the user out — login gating and explicit sign-out handle invalid sessions.
  */
 export async function getAccessTokenWithBudget(totalMs = 24_000): Promise<string | null> {
   const { session } = await getSessionWithBudget(totalMs)
@@ -88,13 +80,10 @@ export async function getAccessTokenWithBudget(totalMs = 24_000): Promise<string
   t = rs.data.session?.access_token?.trim() || null
   if (t) return t
 
-  const userOutcome = await Promise.race([
+  await Promise.race([
     supabase.auth.getUser().then((r) => ({ kind: 'ok' as const, r })),
     sleep(6_000).then(() => ({ kind: 'timeout' as const })),
   ])
-  if (userOutcome.kind === 'ok' && !userOutcome.r.data.user) {
-    dispatchAuthInvalid('no_user_after_token_recovery')
-  }
 
   const last = await Promise.race([
     supabase.auth.getSession(),
