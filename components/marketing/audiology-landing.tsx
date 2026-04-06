@@ -17,7 +17,6 @@ import {
   Bell,
   Sparkles,
   Play,
-  Pause,
   PhoneIncoming,
   ChevronDown,
   ChevronUp,
@@ -249,8 +248,6 @@ const WORKSPACE_TABS = [
 function LandingDashboardMockup() {
   const [workspace, setWorkspace] = useState<(typeof WORKSPACE_TABS)[number]['key']>('calls')
   const [selectedId, setSelectedId] = useState(LANDING_DEMO_CALLS[0].id)
-  const [playing, setPlaying] = useState(false)
-  const [elapsed, setElapsed] = useState(0)
   const [draft, setDraft] = useState('')
   const [extraByCall, setExtraByCall] = useState<Record<string, DemoLine[]>>({})
   const replyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -260,27 +257,10 @@ function LandingDashboardMockup() {
   const lines = [...selected.transcript, ...extras]
 
   useEffect(() => {
-    if (!playing) return
-    const t = window.setInterval(() => {
-      setElapsed((e) => (e >= selected.durationSec ? e : e + 1))
-    }, 1000)
-    return () => window.clearInterval(t)
-  }, [playing, selected.durationSec])
-
-  useEffect(() => {
-    if (elapsed >= selected.durationSec && playing) setPlaying(false)
-  }, [elapsed, selected.durationSec, playing])
-
-  useEffect(() => {
     return () => {
       if (replyTimer.current) clearTimeout(replyTimer.current)
     }
   }, [])
-
-  const togglePlay = () => {
-    if (elapsed >= selected.durationSec) setElapsed(0)
-    setPlaying((p) => !p)
-  }
 
   const sendDemoNote = () => {
     const t = draft.trim()
@@ -311,7 +291,7 @@ function LandingDashboardMockup() {
       aria-label="Interactive product preview"
     >
       <p className="sr-only">
-        Demo only: switch workspace tabs, pick a call, play the sample timeline, or add a note to the transcript.
+        Demo only: switch workspace tabs, pick a call, or add a note to the transcript. Audio preview is display-only.
       </p>
       <div className="flex max-h-[min(68vh,560px)] min-h-[360px] overflow-hidden rounded-[1.15rem] bg-white text-zinc-800 shadow-inner md:max-h-[520px] md:rounded-[1.35rem]">
         <aside className="hidden w-[38%] max-w-[200px] shrink-0 flex-col border-r border-zinc-200 bg-zinc-50/90 sm:flex lg:max-w-[220px]">
@@ -325,7 +305,6 @@ function LandingDashboardMockup() {
                 type="button"
                 onClick={() => {
                   setWorkspace(key)
-                  if (key !== 'calls') setPlaying(false)
                 }}
                 className={cn(
                   'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left font-medium transition-colors',
@@ -349,8 +328,6 @@ function LandingDashboardMockup() {
                   type="button"
                   onClick={() => {
                     setSelectedId(row.id)
-                    setPlaying(false)
-                    setElapsed(0)
                   }}
                   className={cn(
                     'w-full rounded-lg px-2 py-1.5 text-left text-[10px] transition-colors lg:text-[11px]',
@@ -428,41 +405,32 @@ function LandingDashboardMockup() {
                     <p className="mt-1.5 text-[10px] leading-relaxed text-zinc-700">{selected.summary}</p>
                   </div>
                   <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-2 py-2">
-                    <button
-                      type="button"
-                      onClick={togglePlay}
-                      aria-label={playing ? 'Pause demo playback' : 'Play demo playback'}
-                      className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform active:scale-95"
+                    <div
+                      className="pointer-events-none flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-zinc-500 select-none"
+                      aria-hidden
                     >
-                      {playing ? (
-                        <Pause className="size-3.5 fill-current" />
-                      ) : (
-                        <Play className="size-3.5 fill-current" />
-                      )}
-                    </button>
+                      <Play className="size-3.5 fill-current opacity-60" />
+                    </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex h-6 items-end gap-px">
                         {Array.from({ length: 32 }).map((_, i) => {
                           const base = 20 + ((i * 17) % 100) / 5
-                          const bump = playing ? Math.sin((elapsed + i) * 0.45) * 6 : 0
                           return (
                             <span
                               key={i}
-                              className={cn(
-                                'w-0.5 rounded-full transition-[height] duration-150',
-                                playing ? 'bg-primary/50' : 'bg-zinc-300',
-                              )}
-                              style={{ height: `${Math.min(28, Math.max(8, base + bump))}px` }}
+                              className="w-0.5 rounded-full bg-zinc-300"
+                              style={{ height: `${Math.min(28, Math.max(8, base))}px` }}
                             />
                           )
                         })}
                       </div>
                       <div className="mt-0.5 flex justify-between text-[9px] text-zinc-400">
-                        <span>{fmtDur(elapsed)}</span>
+                        <span>0:00</span>
                         <span>{fmtDur(selected.durationSec)}</span>
                       </div>
                     </div>
                   </div>
+                  <p className="sr-only">Call recording preview is not playable on this marketing page.</p>
                   <div className="space-y-1.5 text-[10px] leading-snug">
                     {lines.map((line, idx) =>
                       line.role === 'agent' ? (
@@ -692,6 +660,39 @@ export function AudiologyLanding() {
             </p>
           </div>
 
+          <div className="mx-auto mb-10 flex max-w-xl flex-col items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setPricingCompareMode((v) => !v)
+                window.requestAnimationFrame(() => {
+                  document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                })
+              }}
+              className={cn(
+                'group flex w-full flex-col items-center justify-center gap-1 rounded-2xl border px-6 py-5 text-center shadow-sm transition-all duration-300',
+                'border-primary/25 bg-gradient-to-b from-primary/[0.08] to-primary/[0.02]',
+                'hover:border-primary/45 hover:shadow-md hover:shadow-primary/10',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+              )}
+            >
+              <span className="text-sm font-semibold text-foreground">
+                {pricingCompareMode ? 'Back to plans & pricing' : 'See how we compare'}
+              </span>
+              {pricingCompareMode ? (
+                <span className="text-xs text-muted-foreground">Return to Starter, Growth, and Scale</span>
+              ) : null}
+              {pricingCompareMode ? (
+                <ChevronUp className="mt-1 h-5 w-5 text-primary transition-transform duration-500 group-hover:-translate-y-1 motion-reduce:transition-none" />
+              ) : (
+                <ChevronDown className="mt-1 h-5 w-5 text-primary transition-transform duration-500 group-hover:translate-y-1 motion-reduce:transition-none" />
+              )}
+            </button>
+            <p className="text-center text-[11px] text-muted-foreground">
+              Competitor figures reflect our last snapshot; always confirm on smith.ai and dialzara.com.
+            </p>
+          </div>
+
           <div
             className="mx-auto grid max-w-6xl gap-5 duration-500 ease-out animate-in fade-in-0 motion-reduce:animate-none md:grid-cols-3 md:items-stretch"
             key={pricingCompareMode ? 'compare' : 'plans'}
@@ -867,39 +868,6 @@ export function AudiologyLanding() {
                   </CardContent>
                 </Card>
               ))}
-          </div>
-
-          <div className="mx-auto mt-14 flex max-w-xl flex-col items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setPricingCompareMode((v) => !v)
-                window.requestAnimationFrame(() => {
-                  document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                })
-              }}
-              className={cn(
-                'group flex w-full flex-col items-center justify-center gap-1 rounded-2xl border px-6 py-5 text-center shadow-sm transition-all duration-300',
-                'border-primary/25 bg-gradient-to-b from-primary/[0.08] to-primary/[0.02]',
-                'hover:border-primary/45 hover:shadow-md hover:shadow-primary/10',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
-              )}
-            >
-              <span className="text-sm font-semibold text-foreground">
-                {pricingCompareMode ? 'Back to plans & pricing' : 'See how we compare'}
-              </span>
-              {pricingCompareMode ? (
-                <span className="text-xs text-muted-foreground">Return to Starter, Growth, and Scale</span>
-              ) : null}
-              {pricingCompareMode ? (
-                <ChevronUp className="mt-1 h-5 w-5 text-primary transition-transform duration-500 group-hover:-translate-y-1 motion-reduce:transition-none" />
-              ) : (
-                <ChevronDown className="mt-1 h-5 w-5 text-primary transition-transform duration-500 group-hover:translate-y-1 motion-reduce:transition-none" />
-              )}
-            </button>
-            <p className="text-center text-[11px] text-muted-foreground">
-              Competitor figures reflect our last snapshot; always confirm on smith.ai and dialzara.com.
-            </p>
           </div>
         </div>
       </section>
