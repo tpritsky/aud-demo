@@ -34,9 +34,10 @@ export function GetStartedClient({
     if (!isHydrated) return
     if (!isLoggedIn) {
       const q = redirectQueryString
-      const to = q ? `/login?next=${encodeURIComponent(`/dashboard?${q}`)}` : '/login'
-      gsLog('redirect', { reason: 'not_logged_in', to })
-      router.replace(to)
+      const dest = q ? `/dashboard?${q}` : '/dashboard'
+      const viaLogin = `/login?next=${encodeURIComponent(dest)}`
+      gsLog('redirect', { reason: 'not_logged_in', to: viaLogin })
+      router.replace(viaLogin)
       return
     }
     if (profile?.role === 'super_admin' && !setupClinicId) {

@@ -28,7 +28,13 @@ export default function LoginPage() {
       let target = '/dashboard'
       if (typeof window !== 'undefined') {
         const next = new URLSearchParams(window.location.search).get('next')
-        if (next && next.startsWith('/') && !next.startsWith('//')) {
+        if (
+          next &&
+          next.startsWith('/') &&
+          !next.startsWith('//') &&
+          !next.includes(':') &&
+          !next.includes('@')
+        ) {
           target = next
         }
       }
