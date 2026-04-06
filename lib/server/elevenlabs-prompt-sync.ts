@@ -1,5 +1,11 @@
 import type { ClinicCallAiSettings, ClinicVertical } from '@/lib/types'
-import { formatKnowledgeForPrompt, formatTextMessageTemplatesForPrompt } from '@/lib/clinic-call-ai'
+import {
+  formatCustomSummaryForLiveVoice,
+  formatKnowledgeForPrompt,
+  formatPostProcessingForLiveVoice,
+  formatSummaryFocusForLiveVoice,
+  formatTextMessageTemplatesForPrompt,
+} from '@/lib/clinic-call-ai'
 import { expandVoiceCallFlowToGuidance } from '@/lib/voice-call-flow'
 
 const SYNC_START = '<<<AUD_APP_MANAGED_PROMPT_START>>>'
@@ -17,10 +23,24 @@ export function buildManagedPromptBlock(vertical: ClinicVertical, callAi: Clinic
   const knowledge = formatKnowledgeForPrompt(callAi)
   const flow = expandVoiceCallFlowToGuidance(callAi.callFlow)
   const textTemplates = formatTextMessageTemplatesForPrompt(callAi)
+  const summaryFocus = formatSummaryFocusForLiveVoice(callAi)
+  const customSummary = formatCustomSummaryForLiveVoice(callAi)
+  const postProc = formatPostProcessingForLiveVoice(callAi)
+  const staffDocBody = [
+    summaryFocus.trim() || '(No extra summary themes selected — use sound judgment.)',
+    customSummary.trim(),
+    postProc.trim(),
+  ]
+    .filter((s) => s.length > 0)
+    .join('\n\n')
+  const staffDocSection = `## Staff priorities & staff-written instructions\n\n${staffDocBody}`
+
   return [
     '',
     SYNC_START,
     `[Clinic vertical: ${vertical}]`,
+    '',
+    '**Clinic configuration (below):** Everything in this block was set by this business in the app. Treat it as binding operating policy — not optional suggestions. If something conflicts with a generic default, follow this block.',
     '',
     '## Knowledge',
     knowledge.trim() || '(Add knowledge cards in the app — hours, services, policies.)',
@@ -29,6 +49,8 @@ export function buildManagedPromptBlock(vertical: ClinicVertical, callAi: Clinic
     textTemplates.trim() || '(Optional — add templates under Text & email in the app.)',
     '',
     'When a template says email or SMS and email: if the caller wants that information, ask for or confirm the channel they prefer and collect an email address when they want email. The system sends SMS and/or email only after the call ends, using the transcript — so the email must be spoken clearly on the call if they want email delivery.',
+    '',
+    staffDocSection,
     '',
     '## How callers should be handled',
     flow,
@@ -42,7 +64,7 @@ export function buildManagedPromptBlock(vertical: ClinicVertical, callAi: Clinic
     '## When to end the call',
     callAi.hangupGuidance?.trim() || '(not set in app)',
     '',
-    'Per-call dynamic variables (injected by the app): {{staff_context}}, {{hangup_guidance}}, {{clinic_vertical}}, {{call_goal}}, {{call_reason}}, {{clinic_name}}, {{patient_name}}',
+    'Per-call dynamic variables (injected by the app): {{staff_context}} repeats key clinic settings (knowledge, flow, templates index, summary priorities, staff notes) for this call — treat it as authoritative alongside this block. Also: {{hangup_guidance}}, {{clinic_vertical}}, {{call_goal}}, {{call_reason}}, {{clinic_name}}, {{patient_name}}',
     SYNC_END,
     '',
   ]

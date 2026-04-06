@@ -156,6 +156,49 @@ export function formatKnowledgeForPrompt(callAi: ClinicCallAiSettings): string {
   )
 }
 
+/** Staff summary checkboxes — shapes what the live agent should listen for (not a script to read aloud). */
+export function formatSummaryFocusForLiveVoice(callAi: ClinicCallAiSettings): string {
+  const labels = SUMMARY_FOCUS_OPTIONS.filter((o) => callAi.summaryFocusKeys.includes(o.key))
+  if (!labels.length) return ''
+  const lines = labels.map((l) => `- ${l.label}: ${l.hint}`).join('\n')
+  return `Staff asked that calls be documented with these themes in mind (capture facts accordingly; do not recite this list to callers):\n${lines}`
+}
+
+export function formatCustomSummaryForLiveVoice(callAi: ClinicCallAiSettings): string {
+  const t = callAi.customSummaryInstructions?.trim()
+  if (!t) return ''
+  return `Staff instructions for what matters in the conversation record:\n${t.slice(0, 2000)}`
+}
+
+/** Post-processing field is labeled “analysis only” in the UI but staff expectations still inform safe live behavior. */
+export function formatPostProcessingForLiveVoice(callAi: ClinicCallAiSettings): string {
+  const t = callAi.postProcessingRequirements?.trim()
+  if (!t) return ''
+  return (
+    'Staff post-call analysis preferences (do not mention scoring, tags, or internal tools to the caller):\n' +
+    t.slice(0, 2500)
+  )
+}
+
+/** Short index for tight per-call dynamic variables; full wording lives in the synced managed prompt. */
+export function formatTextTemplatesUltraCompact(callAi: ClinicCallAiSettings, maxChars = 800): string {
+  const items = (callAi.textMessageTemplates || []).filter((t) => t.enabled !== false && t.label?.trim())
+  if (!items.length) return ''
+  const parts: string[] = []
+  let used = 0
+  for (const t of items) {
+    const d = t.deliveryChannels ?? 'sms'
+    const del = d === 'both' ? 'SMS+email' : d === 'email' ? 'email' : 'SMS'
+    const chunk = `${t.label.trim()} [${del}]`
+    const nextLen = used + (parts.length ? 2 : 0) + chunk.length
+    if (nextLen > maxChars) break
+    parts.push(chunk)
+    used = nextLen
+  }
+  const tail = parts.length < items.length ? ' …' : ''
+  return `Follow-up offers (see managed prompt for full text): ${parts.join('; ')}${tail}`
+}
+
 function deliveryLabel(d: VoiceTextDeliveryChannels | undefined): string {
   const v = d ?? 'sms'
   if (v === 'both') return 'SMS and/or email (per caller preference and contact info)'
@@ -574,6 +617,10 @@ export function buildVoiceDynamicVariables(opts: {
     `Vertical: ${opts.vertical}`,
     snip.voice,
     snip.triage,
+    formatSummaryFocusForLiveVoice(opts.callAi),
+    formatCustomSummaryForLiveVoice(opts.callAi),
+    formatPostProcessingForLiveVoice(opts.callAi),
+    formatTextTemplatesUltraCompact(opts.callAi),
     opts.callAi.outboundPlaybook?.trim(),
     opts.callAi.inboundPlaybook?.trim(),
     knowledge && `Knowledge:\n${knowledge}`,
@@ -586,7 +633,7 @@ export function buildVoiceDynamicVariables(opts: {
 
   return {
     clinic_vertical: opts.vertical,
-    staff_context: staffContext.slice(0, 2500),
+    staff_context: staffContext.slice(0, 4500),
     hangup_guidance: hangup.slice(0, 1200),
   }
 }
