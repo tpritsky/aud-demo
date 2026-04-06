@@ -293,10 +293,12 @@ function sanitizeTextMessageTemplates(raw: unknown): VoiceTextMessageTemplate[] 
     const message = typeof o.message === 'string' ? o.message.slice(0, 2000) : ''
     const instructions = typeof o.instructions === 'string' ? o.instructions.slice(0, 2000) : ''
     const deliveryRaw = o.deliveryChannels
-    const deliveryChannels =
-      typeof deliveryRaw === 'string' && (deliveryOpts as readonly string[]).includes(deliveryRaw)
-        ? (deliveryRaw as VoiceTextDeliveryChannels)
-        : undefined
+    const normalized =
+      typeof deliveryRaw === 'string' ? deliveryRaw.trim().toLowerCase() : ''
+    const deliveryChannels: VoiceTextDeliveryChannels =
+      normalized && (deliveryOpts as readonly string[]).includes(normalized)
+        ? (normalized as VoiceTextDeliveryChannels)
+        : 'sms'
     const item: VoiceTextMessageTemplate = {
       id: o.id.slice(0, 80),
       kind,
@@ -304,8 +306,8 @@ function sanitizeTextMessageTemplates(raw: unknown): VoiceTextMessageTemplate[] 
       message,
       instructions,
       enabled: typeof o.enabled === 'boolean' ? o.enabled : true,
+      deliveryChannels,
     }
-    if (deliveryChannels) item.deliveryChannels = deliveryChannels
     out.push(item)
     if (out.length >= TEXT_MESSAGE_TEMPLATES_MAX_COUNT) break
   }

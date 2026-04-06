@@ -86,9 +86,14 @@ const emptyDraft = (kind: VoiceTextMessageKind): Draft =>
 export function SendTextMessagesSection({
   callAi,
   onChange,
+  onTemplatesCommit,
 }: {
   callAi: ClinicCallAiSettings
   onChange: (next: ClinicCallAiSettings) => void
+  /**
+   * Persist templates to the server. Return true when the PATCH succeeded.
+   */
+  onTemplatesCommit?: (next: ClinicCallAiSettings) => boolean | Promise<boolean>
 }) {
   const flow = callAi.callFlow
   const templates = callAi.textMessageTemplates ?? []
@@ -103,9 +108,13 @@ export function SendTextMessagesSection({
   const [dialogMode, setDialogMode] = useState<'closed' | 'add' | 'edit'>('closed')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(emptyDraft('sms'))
+  const [templatePersisting, setTemplatePersisting] = useState(false)
 
-  const setTemplates = (next: VoiceTextMessageTemplate[]) => {
-    onChange({ ...callAi, textMessageTemplates: next })
+  const applyTemplates = async (next: VoiceTextMessageTemplate[]): Promise<boolean> => {
+    const updated = { ...callAi, textMessageTemplates: next }
+    onChange(updated)
+    if (!onTemplatesCommit) return true
+    return onTemplatesCommit(updated)
   }
 
   const setFlow = (patch: Partial<ClinicCallAiSettings['callFlow']>) => {
@@ -146,7 +155,7 @@ export function SendTextMessagesSection({
     )
   }, [draft])
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
     if (!canSave) return
     const base: VoiceTextMessageTemplate = {
       id: editingId ?? newTemplateId(),
@@ -157,25 +166,30 @@ export function SendTextMessagesSection({
       enabled: true,
       deliveryChannels: draft.deliveryChannels,
     }
-    if (dialogMode === 'edit' && editingId) {
-      const prev = templates.find((x) => x.id === editingId)
-      setTemplates(
-        templates.map((x) =>
-          x.id === editingId ? { ...base, enabled: prev?.enabled ?? true } : x
-        )
-      )
-    } else {
-      setTemplates([...templates, { ...base, enabled: true }])
+    const nextList =
+      dialogMode === 'edit' && editingId
+        ? (() => {
+            const prev = templates.find((x) => x.id === editingId)
+            return templates.map((x) =>
+              x.id === editingId ? { ...base, enabled: prev?.enabled ?? true } : x
+            )
+          })()
+        : [...templates, { ...base, enabled: true }]
+    setTemplatePersisting(true)
+    try {
+      const ok = await applyTemplates(nextList)
+      if (ok) closeDialog()
+    } finally {
+      setTemplatePersisting(false)
     }
-    closeDialog()
   }
 
   const toggleEnabled = (id: string, enabled: boolean) => {
-    setTemplates(templates.map((t) => (t.id === id ? { ...t, enabled } : t)))
+    void applyTemplates(templates.map((t) => (t.id === id ? { ...t, enabled } : t)))
   }
 
   const remove = (id: string) => {
-    setTemplates(templates.filter((t) => t.id !== id))
+    void applyTemplates(templates.filter((t) => t.id !== id))
   }
 
   const isSchedulingUI = dialogMode !== 'closed' && draft.kind === 'scheduling_link'
@@ -521,11 +535,20 @@ export function SendTextMessagesSection({
             </Button>
             <Button
               type="button"
-              onClick={saveDraft}
-              disabled={!canSave}
+              onClick={() => void saveDraft()}
+              disabled={!canSave || templatePersisting}
               className="bg-emerald-600 hover:bg-emerald-600/90 text-white"
             >
-              {dialogMode === 'edit' ? 'Save changes' : 'Add message'}
+              {templatePersisting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : dialogMode === 'edit' ? (
+                'Save changes'
+              ) : (
+                'Add message'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

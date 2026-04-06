@@ -130,36 +130,63 @@ export function AgentWorkspaceTab({ section, superAdminClinicId = null }: Props)
     )
   }, [agentConfigFromClinic, clinicName])
 
+  const persistReceptionistSettings = useCallback(
+    async (nextCallAi: ClinicCallAiSettings, successMessage = 'Receptionist settings saved'): Promise<boolean> => {
+      setSaving(true)
+      try {
+        const body: Record<string, unknown> = {
+          callAi: nextCallAi,
+          agentClinicFacts: clinicFacts,
+        }
+        if (userRole === 'admin' || userRole === 'super_admin') body.vertical = vertical
+        if ((userRole === 'admin' || userRole === 'super_admin' || actingAsSuperAdmin) && linePhoneIdDraft.trim()) {
+          body.agentUiPatch = { elevenLabsPhoneNumberId: linePhoneIdDraft.trim() }
+        }
+        const res = await authFetch(clinicSettingsApiUrl(viewAs?.userId, superAdminClinicId), {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Save failed')
+        setCallAi(data.callAi as ClinicCallAiSettings)
+        setVertical(data.vertical as ClinicVertical)
+        const nextAc = (data.agentConfig as AgentConfig | null) ?? agentConfigFromClinic
+        setAgentConfigFromClinic(nextAc)
+        if (nextAc) setAgentConfig(nextAc)
+        toast.success(successMessage)
+        return true
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Save failed')
+        return false
+      } finally {
+        setSaving(false)
+      }
+    },
+    [
+      actingAsSuperAdmin,
+      agentConfigFromClinic,
+      authFetch,
+      clinicFacts,
+      linePhoneIdDraft,
+      setAgentConfig,
+      superAdminClinicId,
+      userRole,
+      vertical,
+      viewAs?.userId,
+    ]
+  )
+
   const save = async () => {
     if (!callAi) return
-    setSaving(true)
-    try {
-      const body: Record<string, unknown> = {
-        callAi,
-        agentClinicFacts: clinicFacts,
-      }
-      if (userRole === 'admin' || userRole === 'super_admin') body.vertical = vertical
-      if ((userRole === 'admin' || userRole === 'super_admin' || actingAsSuperAdmin) && linePhoneIdDraft.trim()) {
-        body.agentUiPatch = { elevenLabsPhoneNumberId: linePhoneIdDraft.trim() }
-      }
-      const res = await authFetch(clinicSettingsApiUrl(viewAs?.userId, superAdminClinicId), {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Save failed')
-      setCallAi(data.callAi as ClinicCallAiSettings)
-      setVertical(data.vertical as ClinicVertical)
-      const nextAc = (data.agentConfig as AgentConfig | null) ?? agentConfigFromClinic
-      setAgentConfigFromClinic(nextAc)
-      if (nextAc) setAgentConfig(nextAc)
-      toast.success('Receptionist settings saved')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Save failed')
-    } finally {
-      setSaving(false)
-    }
+    await persistReceptionistSettings(callAi)
   }
+
+  const commitTextTemplates = useCallback(
+    async (next: ClinicCallAiSettings) => {
+      return persistReceptionistSettings(next, 'Message settings saved')
+    },
+    [persistReceptionistSettings]
+  )
 
   /** Picking a line saves immediately so the line is assigned to this clinic’s agent (no extra Save click). */
   const persistLinePick = useCallback(
@@ -343,7 +370,11 @@ export function AgentWorkspaceTab({ section, superAdminClinicId = null }: Props)
                 </p>
               </div>
               <div className="p-4 sm:p-5">
-                <SendTextMessagesSection callAi={callAi} onChange={setCallAi} />
+                <SendTextMessagesSection
+                  callAi={callAi}
+                  onChange={setCallAi}
+                  onTemplatesCommit={commitTextTemplates}
+                />
               </div>
             </div>
           ) : (

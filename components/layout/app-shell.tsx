@@ -62,10 +62,6 @@ export function AppShell({ children, title }: AppShellProps) {
       <div className="min-h-screen bg-muted/30 flex flex-col items-center justify-center gap-3 px-4">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden />
         <p className="text-center text-sm font-medium text-foreground">Verifying your account</p>
-        <p className="max-w-md text-center text-xs text-muted-foreground">
-          Loading profile, permissions, and required data. If something is misconfigured you will see every error —
-          you will not be signed in until checks pass.
-        </p>
       </div>
     )
   }
