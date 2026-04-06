@@ -12,17 +12,17 @@ export function mergeVoiceCallFlow(
 }
 
 /** Injected when confirmContactReadback is on — voice-optimized email/phone verification. */
-const CONTACT_READBACK_RULES = `Whenever you collect a phone number or email for SMS, email, or a follow-up message, verify it with the caller before you send or call any send tool.
+const CONTACT_READBACK_RULES = `After the caller gives their phone number or email for SMS, email, or a follow-up, **read it back** and get a clear yes before you call any send tool or promise delivery.
 
-**Phone numbers:** Read back digit by digit (or in short groups of 3–4 digits). Ask clearly if that is correct.
+**Phone numbers:** Read back **digit by digit** (or short groups of 3–4). Ask if that is correct.
 
-**Email addresses — part before @ (local part):** Confirm **exactly, character by character**: say each letter and each digit; say "dot" for periods, "underscore" for _, "hyphen" for -. Do not skip or guess.
+**Email — local part (before @):** Spell **letter by letter and character by character** (digits as words; say "dot", "underscore", "hyphen" for symbols). Do this **after** they have told you the address.
 
-**Email addresses — part after @ (domain):**
-- **Common public providers** (do **not** spell the domain letter-by-letter): gmail.com, googlemail.com, yahoo.com, ymail.com, outlook.com, hotmail.com, live.com, msn.com, icloud.com, me.com, mac.com, aol.com, proton.me, protonmail.com, mail.com, gmx.com, zoho.com, fastmail.com — for these, confirm in natural speech, e.g. "j-o-h-n dot smith at gmail dot com" (local part still letter-by-letter) then "and that is at gmail dot com" without spelling g-m-a-i-l.
-- **Custom, business, or uncommon domains** (anything not in that list, or multi-part like .co.uk, or names that could be confused): treat the **whole domain** as exact — spell it **letter-by-letter** with "dot" between labels (e.g. "s-m-i-t-h law dot com") until the caller confirms.
+**Email — domain (after @):**
+- **Well-known providers** — say the domain as a **short phrase**, not letter-by-letter: gmail.com, googlemail.com, yahoo.com, ymail.com, outlook.com, hotmail.com, live.com, msn.com, icloud.com, me.com, mac.com, aol.com, proton.me, protonmail.com, mail.com, gmx.com, zoho.com, fastmail.com. Example: local part spelled out, then "at gmail dot com" (not g-m-a-i-l).
+- **Custom or business domains** (not in that list, or .co.uk / similar, or easy to confuse): spell the **full domain** letter-by-letter with "dot" between parts until they confirm.
 
-Then ask one short yes/no: is that all correct? Only after they confirm, proceed to send.`
+Finish with one yes/no: is that all correct? Only then send.`
 
 export const DEFAULT_VOICE_CALL_FLOW: VoiceCallFlowSettings = {
   questionStyle: 'balanced',
@@ -57,9 +57,9 @@ const T_PRESET: Record<VoiceCallFlowSettings['transferStyle'], string> = {
 
 const TX_PRESET: Record<VoiceCallFlowSettings['textStyle'], string> = {
   confirm_only:
-    'Only send texts or emails the caller clearly agrees to (e.g. confirmations, links they asked for), not unsolicited marketing. When the live-send tool is available, send during the call as soon as details are confirmed—do not defer to after the call.',
+    'Only send texts or emails the caller clearly agrees to, not unsolicited marketing. Send **during the call** as soon as they agree and contact details are confirmed (use the live tool when it exists).',
   send_summary:
-    'You may send a short SMS summary or next-step link when the caller opts in; send during the call using the live-send tool when it is available, not only after hangup.',
+    'You may send a short SMS or email summary or link when the caller opts in — **during the call** via the live tool when available.',
   minimal: 'Avoid texting unless the caller explicitly asks for a text.',
 }
 

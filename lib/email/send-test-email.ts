@@ -1,4 +1,4 @@
-import { getResendFromEmail } from '@/lib/email/resend-from'
+import { RESEND_FROM_EMAIL } from '@/lib/email/resend-from'
 
 type ResendErrorShape = {
   message?: string
@@ -30,7 +30,7 @@ export async function sendTestEmail(params: {
   const resend = new Resend(apiKey)
 
   const res = await resend.emails.send({
-    from: getResendFromEmail(),
+    from: RESEND_FROM_EMAIL,
     to: params.to,
     subject: params.subject,
     text: params.body,

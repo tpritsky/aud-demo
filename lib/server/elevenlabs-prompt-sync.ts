@@ -27,7 +27,7 @@ export function stripManagedPromptBlock(prompt: string): string {
 export function buildManagedPromptBlock(
   vertical: ClinicVertical,
   callAi: ClinicCallAiSettings,
-  opts?: { liveFollowUpToolEnabled?: boolean; followUpSendTiming?: 'during_call' | 'after_call' }
+  opts?: { liveFollowUpToolEnabled?: boolean }
 ): string {
   const knowledge = formatKnowledgeForPrompt(callAi)
   const flow = expandVoiceCallFlowToGuidance(callAi.callFlow)
@@ -44,34 +44,23 @@ export function buildManagedPromptBlock(
     .join('\n\n')
   const staffDocSection = `## Staff priorities & staff-written instructions\n\n${staffDocBody}`
 
-  const timing =
-    opts?.followUpSendTiming ??
-    (callAi.followUpSendTiming === 'after_call' ? 'after_call' : 'during_call')
-
-  const deliverySection =
-    timing === 'after_call'
-      ? [
-          '**Delivery timing (staff setting): AFTER the call only.** Do **not** call `send_follow_up_now` — that path is disabled for this business. Collect clear consent and accurate contact details (read-back rules below). Tell the caller their SMS and/or email will be sent **after the call ends**, once the system processes the conversation — check spam for email. Do not promise an instant send during the call.',
-          '',
-          '**Post-call delivery:** The transcript is analyzed automatically; SMS goes through Twilio and email through **Resend** (same transactional email service as the dashboard test message).',
-        ].join('\n')
-      : opts?.liveFollowUpToolEnabled
-        ? [
-            '**IMMEDIATE DELIVERY (staff setting: during the call):** This agent has the `send_follow_up_now` tool. For every agreed template (SMS and/or email), you **must** call that tool **during this call** as soon as consent and contact details are confirmed — usually in the **same turn**, before you tell them it is sent.',
-            '',
-            '**How sending works:** The tool calls this app’s server, which sends email with **Resend** and SMS with **Twilio** — the same stack as “Send a test message” in settings. You only pass parameters; you do not connect to Resend yourself.',
-            '',
-            '**Forbidden when this tool exists:** Do **not** tell the caller the message will arrive "after the call," "when we hang up," "shortly," "automatically later," or "in a few minutes" unless the tool has just failed and you are honestly offering a fallback.',
-            '',
-            '**What to say after a successful tool call:** Say the email or text **was just sent** and they should check their inbox or messages **now** (and spam/junk for email).',
-            '',
-            '**Tool parameters:** Exact `template_id` from the list above; `caller_confirmed: true`; `send_sms` / `send_email` must match that template’s delivery channels and what they asked for. For SMS include `caller_phone_e164` in E.164 (e.g. +15551234567). For email include full `destination_email` you verified with them.',
-            '',
-            '**Backup (silent):** The system may still try from the transcript after the call only if something was not sent live — do not **describe** that as the primary plan when this tool succeeds.',
-          ].join('\n')
-        : [
-            '**Delivery timing (staff setting: during the call), but the live tool is not attached yet.** Deploy with a public URL (`NEXT_PUBLIC_APP_URL` or Vercel) and `ELEVENLABS_API_KEY`, then **push from the app** to attach `send_follow_up_now`. Until then, say the message will follow **after the call** from the transcript — speak emails clearly. Email still uses **Resend** and SMS **Twilio** on the server once processing runs.',
-          ].join('\n')
+  const deliverySection = opts?.liveFollowUpToolEnabled
+    ? [
+        '**DELIVERY DURING THIS CALL (required):** This agent has `send_follow_up_now`. For every agreed template (SMS and/or email), **call the tool in this call** as soon as the caller agrees and you have confirmed their contact details (read-back rules below) — ideally the **same turn**, before you say it was sent.',
+        '',
+        '**How sending works:** The tool calls this app’s server, which sends email with **Resend** and SMS with **Twilio** — the same path as “Send a test message” in settings.',
+        '',
+        '**Do not** tell the caller delivery is only "after the call" unless the tool just failed and you are offering an honest fallback.',
+        '',
+        '**After success:** Say the email or text **was just sent**; they should check inbox or messages **now** (and spam for email).',
+        '',
+        '**Parameters:** Exact `template_id`; `caller_confirmed: true`; `send_sms` / `send_email` per template and caller choice; `caller_phone_e164` (E.164) for SMS; `destination_email` for email.',
+        '',
+        '**Backup:** The system may retry from the transcript after the call only if live send did not happen — do not present that as the default plan.',
+      ].join('\n')
+    : [
+        '**Live tool not attached yet.** Deploy with a public URL and `ELEVENLABS_API_KEY`, then **push from the app** to attach `send_follow_up_now`. Until then, say follow-up may go **after the call** from the transcript. Server still uses **Resend** (email) and **Twilio** (SMS) when processing runs.',
+      ].join('\n')
 
   return [
     '',
@@ -171,8 +160,7 @@ export async function syncElevenLabsAgentPrompt(opts: {
   const current = extractPromptFromAgentJson(agentJson)
   const stripped = stripManagedPromptBlock(current)
 
-  const wantLiveTool =
-    clinicHasDeliverableFollowUpTemplates(callAi) && callAi.followUpSendTiming !== 'after_call'
+  const wantLiveTool = clinicHasDeliverableFollowUpTemplates(callAi)
 
   const knownToolId = await findSendFollowUpToolId(apiKey)
   const followUpToolId = wantLiveTool ? await ensureSendFollowUpWebhookTool(apiKey) : null
@@ -182,7 +170,6 @@ export async function syncElevenLabsAgentPrompt(opts: {
     stripped +
     buildManagedPromptBlock(vertical, callAi, {
       liveFollowUpToolEnabled: liveAttached,
-      followUpSendTiming: callAi.followUpSendTiming === 'after_call' ? 'after_call' : 'during_call',
     })
   ).trim()
 

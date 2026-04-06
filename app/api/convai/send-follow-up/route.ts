@@ -91,13 +91,6 @@ export async function POST(request: NextRequest) {
   const callAi = mergeCallAiSettings(vertical, partialAi)
   const clinicName = typeof c.name === 'string' ? c.name : clinic.clinicName
 
-  if (callAi.followUpSendTiming === 'after_call') {
-    return NextResponse.json({
-      result:
-        'This business is set to send follow-ups only after the call. Tell the caller their email or text will arrive shortly after the call ends.',
-    })
-  }
-
   const out = await deliverFollowUpFromLiveTool({
     supabase,
     conversationId,

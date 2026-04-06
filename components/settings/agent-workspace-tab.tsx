@@ -358,9 +358,9 @@ export function AgentWorkspaceTab({ section, superAdminClinicId = null }: Props)
                   Send text/email messages
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1 max-w-2xl leading-relaxed">
-                  Your receptionist can send SMS or plain-text email with scheduling links and more. After you push to
-                  the phone line, eligible messages can go out during the call when the caller agrees; anything not sent
-                  live can still go after the call from the transcript.
+                  Your receptionist sends SMS or plain-text email during the call as soon as the caller agrees (after
+                  you push to the phone line). If live send does not run, delivery can still happen from the transcript
+                  after the call.
                 </p>
               </div>
               <div className="p-4 sm:p-5">

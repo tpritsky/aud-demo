@@ -175,7 +175,7 @@ export async function deliverFollowUpFromLiveTool(opts: {
       return {
         ok: false,
         result: short
-          ? `Email failed (${short}). Apologize briefly. Staff: check Resend dashboard, RESEND_API_KEY, and RESEND_FROM_EMAIL on a verified domain.`
+          ? `Email failed (${short}). Apologize briefly. Staff: check Resend dashboard and RESEND_API_KEY.`
           : 'Email send failed; try again or send after the call.',
       }
     }

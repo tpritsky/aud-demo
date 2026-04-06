@@ -30,7 +30,6 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type {
   ClinicCallAiSettings,
-  FollowUpSendTiming,
   VoiceTextDeliveryChannels,
   VoiceTextMessageKind,
   VoiceTextMessageTemplate,
@@ -241,43 +240,8 @@ export function SendTextMessagesSection({
     }
   }
 
-  const followTiming: FollowUpSendTiming =
-    callAi.followUpSendTiming === 'after_call' ? 'after_call' : 'during_call'
-
   return (
     <div className="space-y-6 max-w-3xl">
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-        <div className="px-4 py-4 sm:px-5 space-y-3">
-          <div className="space-y-2">
-            <Label id="follow-up-timing-label">When to send messages</Label>
-            <Select
-              value={followTiming}
-              onValueChange={(v) =>
-                onChange({
-                  ...callAi,
-                  followUpSendTiming: v as FollowUpSendTiming,
-                })
-              }
-            >
-              <SelectTrigger id="follow-up-timing" className="max-w-md" aria-labelledby="follow-up-timing-label">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="during_call">During the call (as soon as they agree)</SelectItem>
-                <SelectItem value="after_call">After the call (from the transcript)</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
-              <span className="font-medium text-foreground">During the call</span> uses the live tool: your server
-              sends email with <span className="font-medium text-foreground">Resend</span> and SMS with Twilio — same
-              Resend setup as &quot;Send a test message&quot; below (<code className="text-[11px]">RESEND_API_KEY</code>
-              ). <span className="font-medium text-foreground">After the call</span> sends only after the
-              conversation is processed. Save receptionist settings, then use <span className="font-medium text-foreground">Push to phone line</span> to update the agent.
-            </p>
-          </div>
-        </div>
-      </div>
-
       <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
         <div className="border-b border-border px-4 py-3 sm:px-5">
           <DropdownMenu>
@@ -312,7 +276,7 @@ export function SendTextMessagesSection({
           {templates.length === 0 ? (
             <p className="px-4 py-8 sm:px-5 text-sm text-muted-foreground text-center">
               No messages yet. Use <span className="font-medium text-foreground">Add message</span> to create texts or
-              emails your receptionist can send when the caller agrees (live or after the call).
+              emails your receptionist can send during the call when the caller agrees.
             </p>
           ) : (
             templates.map((t) => (
@@ -382,9 +346,10 @@ export function SendTextMessagesSection({
           <div className="min-w-0 flex-1 space-y-1">
             <h3 className="font-semibold text-foreground">Confirm phone &amp; email aloud</h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Phone: digit-by-digit readback. Email: spell the part before @ letter-by-letter; for Gmail, Yahoo,
-              Outlook, iCloud, etc., confirm the domain as a phrase (e.g. &quot;at gmail dot com&quot;); for custom
-              domains, spell the domain letter-by-letter too.
+              On by default: after the caller gives their number or address, read it back before sending. Phone:
+              digit-by-digit. Email: spell the part before @ letter-by-letter; for Gmail, Yahoo, Outlook, iCloud, etc.
+              say the domain as a phrase (&quot;at gmail dot com&quot;); for custom domains, spell the domain
+              letter-by-letter too.
             </p>
           </div>
           <Switch
@@ -504,8 +469,8 @@ export function SendTextMessagesSection({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                We send only the channels the caller agreed to and we have contact info for (during the call when
-                enabled, otherwise after the call from the transcript).
+                We send only the channels the caller agreed to and we have contact info for — during the call when the
+                live tool is attached; otherwise from the transcript after the call.
               </p>
             </div>
             <div className="space-y-2">

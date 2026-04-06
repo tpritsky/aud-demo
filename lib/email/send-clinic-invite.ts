@@ -1,4 +1,4 @@
-import { getResendFromEmail } from '@/lib/email/resend-from'
+import { RESEND_FROM_EMAIL } from '@/lib/email/resend-from'
 
 function escapeHtml(s: string): string {
   return s
@@ -32,7 +32,7 @@ export async function sendClinicInviteEmail(params: ClinicInviteEmailParams): Pr
     params.inviteeName?.trim() ? `Hi ${escapeHtml(params.inviteeName.trim())},` : 'Hi,'
 
   const res = await resend.emails.send({
-    from: getResendFromEmail(),
+    from: RESEND_FROM_EMAIL,
     to: params.to,
     subject: `You’re invited to join ${params.clinicName}`,
     html: `
