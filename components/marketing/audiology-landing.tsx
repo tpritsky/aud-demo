@@ -173,21 +173,6 @@ const stats = [
   { value: '4.8/5', label: 'Caller satisfaction (demo)' },
 ]
 
-const testimonials = [
-  {
-    quote:
-      "We've cut repeat phone work dramatically. People in the office spend time on real work instead of answering the same questions all day.",
-    author: 'Dr. Sarah Chen',
-    role: 'Owner, Harmony Hearing Clinic',
-  },
-  {
-    quote:
-      'New intakes and callbacks finally feel structured. Callers get clear next steps and we get clean handoffs—without hiring another full-time line.',
-    author: 'Jordan Reeves',
-    role: 'Managing Partner, Reeves & Holt LLP',
-  },
-]
-
 type DemoLine = { role: 'agent' | 'user'; text: string }
 
 type DemoCall = {
@@ -550,9 +535,6 @@ export function AudiologyLanding() {
             <a href="#features" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
               Features
             </a>
-            <a href="#testimonials" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-              Testimonials
-            </a>
             <a href="#pricing" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
               Pricing
             </a>
@@ -691,39 +673,6 @@ export function AudiologyLanding() {
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground sm:mt-2 sm:text-sm">
                   {feature.description}
                 </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section
-        id="testimonials"
-        className="scroll-mt-16 border-t border-border/40 bg-background pt-10 pb-16 max-md:hidden lg:pt-12 lg:pb-20"
-      >
-        <div className="container mx-auto px-4 lg:px-8">
-          <div className="mx-auto mb-8 max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Trusted by busy front offices</h2>
-          </div>
-          <div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-2">
-            {testimonials.map((testimonial) => (
-              <div
-                key={testimonial.author}
-                className="rounded-2xl border border-border/70 bg-card p-6 shadow-sm transition-shadow hover:shadow-md"
-              >
-                <p className="leading-relaxed text-muted-foreground">&ldquo;{testimonial.quote}&rdquo;</p>
-                <div className="mt-6 flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary ring-1 ring-primary/20">
-                    {testimonial.author
-                      .split(' ')
-                      .map((n) => n[0])
-                      .join('')}
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{testimonial.author}</div>
-                    <div className="text-xs text-muted-foreground">{testimonial.role}</div>
-                  </div>
-                </div>
               </div>
             ))}
           </div>
