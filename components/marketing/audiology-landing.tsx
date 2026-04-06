@@ -524,11 +524,11 @@ export function AudiologyLanding() {
         </div>
       </header>
 
-      <section className="relative overflow-hidden bg-gradient-to-b from-primary/[0.09] via-background to-background px-4 pb-6 pt-10 sm:pb-12 sm:pt-14 lg:px-8">
+      <section className="relative overflow-hidden bg-gradient-to-b from-primary/[0.09] via-background to-background pb-6 pt-10 sm:pb-12 sm:pt-14">
         <div className="pointer-events-none absolute -left-32 top-24 h-80 w-80 rounded-full bg-primary/[0.12] blur-3xl" aria-hidden />
         <div className="pointer-events-none absolute -right-24 top-40 h-72 w-72 rounded-full bg-emerald-400/15 blur-3xl" aria-hidden />
 
-        <div className="container relative mx-auto max-sm:pr-12 text-center">
+        <div className="container relative mx-auto px-4 text-center lg:px-8">
           <div className="mx-auto mb-8 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-card/90 px-4 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/50 opacity-60 motion-reduce:animate-none" />
@@ -539,7 +539,7 @@ export function AudiologyLanding() {
 
           <h1 className="mx-auto max-w-4xl text-pretty text-4xl font-bold leading-[1.08] tracking-tight text-foreground sm:text-balance sm:text-5xl lg:text-6xl lg:leading-[1.06]">
             The AI voice receptionist that{' '}
-            <span className="text-primary max-sm:mr-1">answers every call</span>{' '}
+            <span className="text-primary">answers every call</span>{' '}
             <br className="hidden sm:block" />
             <span className="sm:ml-2">while </span>
             <span className="text-primary">you focus on what matters</span>
