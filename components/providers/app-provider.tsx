@@ -397,11 +397,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSessionAccount(null)
       }
 
+      /** Super admins use the browser Supabase client like everyone else, but RLS only returns their own user_id rows.
+       *  Clinic calls/patients live under member accounts — load a merged dashboard via service-role API. */
+      let dashboardFromSuperAdminApi = false
+      if (role === 'super_admin' && token) {
+        try {
+          const res = await fetchWithTimeout(
+            `/api/super-admin/user-dashboard-data?userId=${encodeURIComponent(userId)}`,
+            { headers: { Authorization: `Bearer ${token}` } },
+            25_000
+          )
+          if (res.ok) {
+            const data = (await res.json()) as {
+              patients?: Patient[]
+              calls?: Call[]
+              callbackTasks?: CallbackTask[]
+              scheduledCheckIns?: ScheduledCheckIn[]
+              activityEvents?: ActivityEvent[]
+              agentConfig?: AgentConfig | null
+              sequences?: ProactiveSequence[]
+            }
+            setPatients(data.patients ?? [])
+            setCalls(data.calls ?? [])
+            setCallbackTasks(data.callbackTasks ?? [])
+            setScheduledCheckIns(data.scheduledCheckIns ?? [])
+            setActivityEvents(data.activityEvents ?? [])
+            if (Array.isArray(data.sequences)) setSequences(data.sequences)
+            if (data.agentConfig && typeof data.agentConfig === 'object') {
+              setAgentConfig(data.agentConfig)
+            }
+            dashboardFromSuperAdminApi = true
+          }
+        } catch (e: unknown) {
+          if (!isLikelyAbortError(e)) console.error('Super admin dashboard bootstrap:', e)
+        }
+      }
+
       const [patientsData, callsData] = await patientsCallsPromise
 
-      // Set critical data immediately so UI can render
-      setPatients(patientsData)
-      setCalls(callsData)
+      if (!dashboardFromSuperAdminApi) {
+        setPatients(patientsData)
+        setCalls(callsData)
+      }
+
       setIsLoading(false) // Allow UI to render while loading other data
 
       // Prefer GET /api/clinic/settings so server can heal display phone + outbound agent id from the ConvAI line.
@@ -426,20 +464,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 )
             : Promise.resolve(null)
 
-      const [sequencesData, tasksData, checkInsData, eventsData, configData, clinicSettingsData] = await Promise.allSettled([
-        dbSequences.getSequences(supabase, userId).catch(() => []),
-        dbCallbackTasks.getCallbackTasks(supabase, userId).catch(() => []),
-        dbScheduledCheckIns.getScheduledCheckIns(supabase, userId).catch(() => []),
-        dbActivityEvents.getActivityEvents(supabase, userId, 50).catch(() => []),
-        dbAgentConfig.getAgentConfig(supabase, userId).catch(() => null),
-        clinicSettingsPromise,
-      ])
+      const [sequencesData, tasksData, checkInsData, eventsData, configData, clinicSettingsData] =
+        await Promise.allSettled([
+          dashboardFromSuperAdminApi
+            ? Promise.resolve([] as ProactiveSequence[])
+            : dbSequences.getSequences(supabase, userId).catch(() => []),
+          dashboardFromSuperAdminApi
+            ? Promise.resolve([] as CallbackTask[])
+            : dbCallbackTasks.getCallbackTasks(supabase, userId).catch(() => []),
+          dashboardFromSuperAdminApi
+            ? Promise.resolve([] as ScheduledCheckIn[])
+            : dbScheduledCheckIns.getScheduledCheckIns(supabase, userId).catch(() => []),
+          dashboardFromSuperAdminApi
+            ? Promise.resolve([] as ActivityEvent[])
+            : dbActivityEvents.getActivityEvents(supabase, userId, 50).catch(() => []),
+          dashboardFromSuperAdminApi
+            ? Promise.resolve(null)
+            : dbAgentConfig.getAgentConfig(supabase, userId).catch(() => null),
+          clinicSettingsPromise,
+        ])
 
-      // Update state with remaining data
-      if (sequencesData.status === 'fulfilled') setSequences(sequencesData.value)
-      if (tasksData.status === 'fulfilled') setCallbackTasks(tasksData.value)
-      if (checkInsData.status === 'fulfilled') setScheduledCheckIns(checkInsData.value)
-      if (eventsData.status === 'fulfilled') setActivityEvents(eventsData.value)
+      if (!dashboardFromSuperAdminApi) {
+        if (sequencesData.status === 'fulfilled') setSequences(sequencesData.value)
+        if (tasksData.status === 'fulfilled') setCallbackTasks(tasksData.value)
+        if (checkInsData.status === 'fulfilled') setScheduledCheckIns(checkInsData.value)
+        if (eventsData.status === 'fulfilled') setActivityEvents(eventsData.value)
+      }
       // Prefer clinic-level agent config (set by super_admin) over user's agent_config
       const clinicAgentConfig =
         clinicSettingsData.status === 'fulfilled' && clinicSettingsData.value ? clinicSettingsData.value : null
@@ -862,6 +912,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Recalculate scheduled check-ins when patients or sequences change
   useEffect(() => {
     if (!userIdRef.current || isLoading) return
+    if (realProfileRef.current?.role === 'super_admin') return
 
     const userId = userIdRef.current
     const cleared = clearFutureCheckIns(scheduledCheckIns)

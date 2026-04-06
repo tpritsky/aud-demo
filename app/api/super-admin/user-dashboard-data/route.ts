@@ -5,8 +5,17 @@ import * as dbCallbackTasks from '@/lib/db/callback-tasks'
 import * as dbScheduledCheckIns from '@/lib/db/scheduled-checkins'
 import * as dbActivityEvents from '@/lib/db/activity-events'
 import * as dbAgentConfig from '@/lib/db/agent-config'
+import * as dbSequences from '@/lib/db/sequences'
 import * as dbUtils from '@/lib/db/utils'
-import type { CallRow } from '@/lib/db/types'
+import type {
+  CallRow,
+  PatientRow,
+  CallbackTaskRow,
+  CallbackAttemptRow,
+  ScheduledCheckInRow,
+  ActivityEventRow,
+  ProactiveSequenceRow,
+} from '@/lib/db/types'
 import { normalizeVertical, parseClinicSettingsBlob } from '@/lib/clinic-call-ai'
 import type { AgentConfig } from '@/lib/types'
 import {
@@ -99,12 +108,103 @@ export async function GET(request: NextRequest) {
       return (data || []).map((row) => dbUtils.dbCallToApp(row as CallRow))
     }
 
-    const [patients, callsData, tasksData, checkInsData, eventsData] = await Promise.all([
-      dbPatients.getPatients(supabase, targetUserId).catch(() => []),
+    async function userIdsInClinic(clinicId: string, fallback: string): Promise<string[]> {
+      const { data } = await supabase.from('profiles').select('id').eq('clinic_id', clinicId)
+      const ids = (data || []).map((r) => (r as { id: string }).id).filter(Boolean)
+      return ids.length > 0 ? ids : [fallback]
+    }
+
+    async function patientsForUserIds(userIds: string[]) {
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .in('user_id', userIds)
+        .order('created_at', { ascending: false })
+      if (error) {
+        console.error('user-dashboard-data patients:', error)
+        return []
+      }
+      return (data || []).map((row) => dbUtils.dbPatientToApp(row as PatientRow))
+    }
+
+    async function callbackTasksForUserIds(userIds: string[]) {
+      const { data: taskRows, error: te } = await supabase
+        .from('callback_tasks')
+        .select('*')
+        .in('user_id', userIds)
+        .order('created_at', { ascending: false })
+      if (te || !taskRows?.length) return []
+      const taskIds = taskRows.map((t) => (t as CallbackTaskRow).id)
+      const { data: attRows } = await supabase
+        .from('callback_attempts')
+        .select('*')
+        .in('task_id', taskIds)
+        .order('attempt_number', { ascending: true })
+      const attemptsByTask = new Map<string, CallbackAttemptRow[]>()
+      for (const a of attRows || []) {
+        const ar = a as CallbackAttemptRow
+        const list = attemptsByTask.get(ar.task_id) || []
+        list.push(ar)
+        attemptsByTask.set(ar.task_id, list)
+      }
+      return taskRows.map((t) =>
+        dbUtils.dbCallbackTaskToApp(
+          t as CallbackTaskRow,
+          (attemptsByTask.get((t as CallbackTaskRow).id) || []).map(dbUtils.dbCallbackAttemptToApp)
+        )
+      )
+    }
+
+    async function checkInsForUserIds(userIds: string[]) {
+      const { data, error } = await supabase
+        .from('scheduled_check_ins')
+        .select('*')
+        .in('user_id', userIds)
+        .order('scheduled_for', { ascending: true })
+      if (error) return []
+      return (data || []).map((row) => dbUtils.dbScheduledCheckInToApp(row as ScheduledCheckInRow))
+    }
+
+    async function activityForUserIds(userIds: string[]) {
+      const { data, error } = await supabase
+        .from('activity_events')
+        .select('*')
+        .in('user_id', userIds)
+        .order('timestamp', { ascending: false })
+        .limit(80)
+      if (error) return []
+      return (data || []).map((row) => dbUtils.dbActivityEventToApp(row as ActivityEventRow))
+    }
+
+    async function sequencesForUserIds(userIds: string[]) {
+      const { data, error } = await supabase
+        .from('proactive_sequences')
+        .select('*')
+        .in('user_id', userIds)
+        .order('created_at', { ascending: false })
+      if (error) return []
+      return (data || []).map((row) => dbUtils.dbSequenceToApp(row as ProactiveSequenceRow))
+    }
+
+    const memberUserIds = p.clinic_id ? await userIdsInClinic(p.clinic_id, targetUserId) : [targetUserId]
+
+    const [patients, callsData, tasksData, checkInsData, eventsData, sequences] = await Promise.all([
+      p.clinic_id
+        ? patientsForUserIds(memberUserIds)
+        : dbPatients.getPatients(supabase, targetUserId).catch(() => []),
       callsForTarget().catch(() => []),
-      dbCallbackTasks.getCallbackTasks(supabase, targetUserId).catch(() => []),
-      dbScheduledCheckIns.getScheduledCheckIns(supabase, targetUserId).catch(() => []),
-      dbActivityEvents.getActivityEvents(supabase, targetUserId, 50).catch(() => []),
+      p.clinic_id
+        ? callbackTasksForUserIds(memberUserIds)
+        : dbCallbackTasks.getCallbackTasks(supabase, targetUserId).catch(() => []),
+      p.clinic_id
+        ? checkInsForUserIds(memberUserIds)
+        : dbScheduledCheckIns.getScheduledCheckIns(supabase, targetUserId).catch(() => []),
+      p.clinic_id
+        ? activityForUserIds(memberUserIds)
+        : dbActivityEvents.getActivityEvents(supabase, targetUserId, 50).catch(() => []),
+      p.clinic_id
+        ? sequencesForUserIds(memberUserIds)
+        : dbSequences.getSequences(supabase, targetUserId).catch(() => []),
     ])
 
     let agentCfg: AgentConfig | null = null
@@ -133,7 +233,10 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      profile: { role: p.role as 'admin' | 'member', clinicId: p.clinic_id },
+      profile: {
+        role: p.role as 'super_admin' | 'admin' | 'member',
+        clinicId: p.clinic_id,
+      },
       clinic,
       user: { id: targetUserId, email: (targetProfile as { email: string }).email, full_name: (targetProfile as { full_name: string | null }).full_name },
       patients,
@@ -141,6 +244,7 @@ export async function GET(request: NextRequest) {
       callbackTasks: tasksData,
       scheduledCheckIns: checkInsData,
       activityEvents: eventsData,
+      sequences,
       agentConfig: agentCfg,
     })
   } catch (e) {
