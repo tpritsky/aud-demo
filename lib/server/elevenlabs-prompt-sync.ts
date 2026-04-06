@@ -7,6 +7,11 @@ import {
   formatTextMessageTemplatesForPrompt,
 } from '@/lib/clinic-call-ai'
 import { expandVoiceCallFlowToGuidance } from '@/lib/voice-call-flow'
+import {
+  clinicHasDeliverableFollowUpTemplates,
+  ensureSendFollowUpWebhookTool,
+  findSendFollowUpToolId,
+} from '@/lib/server/elevenlabs-follow-up-tool'
 
 const SYNC_START = '<<<AUD_APP_MANAGED_PROMPT_START>>>'
 const SYNC_END = '<<<AUD_APP_MANAGED_PROMPT_END>>>'
@@ -19,7 +24,11 @@ export function stripManagedPromptBlock(prompt: string): string {
   return prompt.replace(re, '').trim()
 }
 
-export function buildManagedPromptBlock(vertical: ClinicVertical, callAi: ClinicCallAiSettings): string {
+export function buildManagedPromptBlock(
+  vertical: ClinicVertical,
+  callAi: ClinicCallAiSettings,
+  opts?: { liveFollowUpToolEnabled?: boolean; followUpSendTiming?: 'during_call' | 'after_call' }
+): string {
   const knowledge = formatKnowledgeForPrompt(callAi)
   const flow = expandVoiceCallFlowToGuidance(callAi.callFlow)
   const textTemplates = formatTextMessageTemplatesForPrompt(callAi)
@@ -35,6 +44,35 @@ export function buildManagedPromptBlock(vertical: ClinicVertical, callAi: Clinic
     .join('\n\n')
   const staffDocSection = `## Staff priorities & staff-written instructions\n\n${staffDocBody}`
 
+  const timing =
+    opts?.followUpSendTiming ??
+    (callAi.followUpSendTiming === 'after_call' ? 'after_call' : 'during_call')
+
+  const deliverySection =
+    timing === 'after_call'
+      ? [
+          '**Delivery timing (staff setting): AFTER the call only.** Do **not** call `send_follow_up_now` — that path is disabled for this business. Collect clear consent and accurate contact details (read-back rules below). Tell the caller their SMS and/or email will be sent **after the call ends**, once the system processes the conversation — check spam for email. Do not promise an instant send during the call.',
+          '',
+          '**Post-call delivery:** The transcript is analyzed automatically; SMS goes through Twilio and email through **Resend** (same transactional email service as the dashboard test message).',
+        ].join('\n')
+      : opts?.liveFollowUpToolEnabled
+        ? [
+            '**IMMEDIATE DELIVERY (staff setting: during the call):** This agent has the `send_follow_up_now` tool. For every agreed template (SMS and/or email), you **must** call that tool **during this call** as soon as consent and contact details are confirmed — usually in the **same turn**, before you tell them it is sent.',
+            '',
+            '**How sending works:** The tool calls this app’s server, which sends email with **Resend** and SMS with **Twilio** — the same stack as “Send a test message” in settings. You only pass parameters; you do not connect to Resend yourself.',
+            '',
+            '**Forbidden when this tool exists:** Do **not** tell the caller the message will arrive "after the call," "when we hang up," "shortly," "automatically later," or "in a few minutes" unless the tool has just failed and you are honestly offering a fallback.',
+            '',
+            '**What to say after a successful tool call:** Say the email or text **was just sent** and they should check their inbox or messages **now** (and spam/junk for email).',
+            '',
+            '**Tool parameters:** Exact `template_id` from the list above; `caller_confirmed: true`; `send_sms` / `send_email` must match that template’s delivery channels and what they asked for. For SMS include `caller_phone_e164` in E.164 (e.g. +15551234567). For email include full `destination_email` you verified with them.',
+            '',
+            '**Backup (silent):** The system may still try from the transcript after the call only if something was not sent live — do not **describe** that as the primary plan when this tool succeeds.',
+          ].join('\n')
+        : [
+            '**Delivery timing (staff setting: during the call), but the live tool is not attached yet.** Deploy with a public URL (`NEXT_PUBLIC_APP_URL` or Vercel) and `ELEVENLABS_API_KEY`, then **push from the app** to attach `send_follow_up_now`. Until then, say the message will follow **after the call** from the transcript — speak emails clearly. Email still uses **Resend** and SMS **Twilio** on the server once processing runs.',
+          ].join('\n')
+
   return [
     '',
     SYNC_START,
@@ -45,10 +83,10 @@ export function buildManagedPromptBlock(vertical: ClinicVertical, callAi: Clinic
     '## Knowledge',
     knowledge.trim() || '(Add knowledge cards in the app — hours, services, policies.)',
     '',
-    '## Canned follow-up messages (sent after the call, not during)',
+    '## Canned follow-up messages (SMS / email)',
     textTemplates.trim() || '(Optional — add templates under Text & email in the app.)',
     '',
-    'When a template says email or SMS and email: if the caller wants that information, ask for or confirm the channel they prefer and collect an email address when they want email. The system sends SMS and/or email only after the call ends, using the transcript — so the email must be spoken clearly on the call if they want email delivery.',
+    deliverySection,
     '',
     staffDocSection,
     '',
@@ -132,7 +170,21 @@ export async function syncElevenLabsAgentPrompt(opts: {
   const agentJson = (await getRes.json()) as Record<string, unknown>
   const current = extractPromptFromAgentJson(agentJson)
   const stripped = stripManagedPromptBlock(current)
-  const nextPrompt = (stripped + buildManagedPromptBlock(vertical, callAi)).trim()
+
+  const wantLiveTool =
+    clinicHasDeliverableFollowUpTemplates(callAi) && callAi.followUpSendTiming !== 'after_call'
+
+  const knownToolId = await findSendFollowUpToolId(apiKey)
+  const followUpToolId = wantLiveTool ? await ensureSendFollowUpWebhookTool(apiKey) : null
+  const liveAttached = wantLiveTool && Boolean(followUpToolId)
+
+  const nextPrompt = (
+    stripped +
+    buildManagedPromptBlock(vertical, callAi, {
+      liveFollowUpToolEnabled: liveAttached,
+      followUpSendTiming: callAi.followUpSendTiming === 'after_call' ? 'after_call' : 'during_call',
+    })
+  ).trim()
 
   const ccBase = (agentJson.conversation_config && typeof agentJson.conversation_config === 'object'
     ? agentJson.conversation_config
@@ -150,9 +202,20 @@ export async function syncElevenLabsAgentPrompt(opts: {
   const ag = (cc.agent && typeof cc.agent === 'object' ? cc.agent : {}) as Record<string, unknown>
   const pr = (ag.prompt && typeof ag.prompt === 'object' ? ag.prompt : {}) as Record<string, unknown>
 
+  const mergedPrompt = sanitizePromptForPatch(pr, nextPrompt)
+  if (wantLiveTool && followUpToolId) {
+    const prev = Array.isArray(mergedPrompt.tool_ids)
+      ? ([...mergedPrompt.tool_ids] as string[]).filter((x) => typeof x === 'string')
+      : []
+    if (!prev.includes(followUpToolId)) prev.push(followUpToolId)
+    mergedPrompt.tool_ids = prev
+  } else if (!wantLiveTool && knownToolId && Array.isArray(mergedPrompt.tool_ids)) {
+    mergedPrompt.tool_ids = (mergedPrompt.tool_ids as string[]).filter((id) => id !== knownToolId)
+  }
+
   cc.agent = {
     ...ag,
-    prompt: sanitizePromptForPatch(pr, nextPrompt),
+    prompt: mergedPrompt,
   }
 
   const patchBody = { conversation_config: cc }

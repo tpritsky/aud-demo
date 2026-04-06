@@ -60,6 +60,11 @@ export interface VoiceCallFlowSettings {
   schedulingNotes: string
   notificationStyle: 'urgent_only' | 'standard' | 'quiet'
   notificationNotes: string
+  /**
+   * When true (default), read phone numbers and email addresses back to the caller and ask for correction
+   * before sending a text or scheduling delivery.
+   */
+  confirmContactReadback: boolean
 }
 
 /** Preset SMS / scheduling texts the receptionist can send to callers (stored in callAi). */
@@ -67,6 +72,9 @@ export type VoiceTextMessageKind = 'sms' | 'scheduling_link'
 
 /** How a template may be delivered when triggered after a call (post-processing). Omitted = SMS-only (legacy). */
 export type VoiceTextDeliveryChannels = 'sms' | 'email' | 'both'
+
+/** When canned SMS/email follow-ups are sent for this clinic (voice agent + post-processing). */
+export type FollowUpSendTiming = 'during_call' | 'after_call'
 
 export interface VoiceTextMessageTemplate {
   id: string
@@ -107,6 +115,11 @@ export interface ClinicCallAiSettings {
   knowledgeItems: VoiceKnowledgeItem[]
   /** Canned SMS templates (pricing links, scheduling URL, etc.). */
   textMessageTemplates: VoiceTextMessageTemplate[]
+  /**
+   * During the call: `send_follow_up_now` webhook → server sends via Resend (email) / Twilio (SMS).
+   * After the call: post-call transcript analysis only.
+   */
+  followUpSendTiming: FollowUpSendTiming
   /** Selectable presets + editable notes for questions, transfers, SMS, scheduling, notifications. */
   callFlow: VoiceCallFlowSettings
 }

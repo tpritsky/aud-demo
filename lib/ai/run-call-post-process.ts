@@ -105,13 +105,32 @@ export async function runCallPostProcessJob(callId: string): Promise<void> {
       .eq('id', callId)
 
     if (callAiForDelivery && result.follow_up_messages.length > 0) {
-      await deliverFollowUpMessagesAfterCall({
-        templates: callAiForDelivery.textMessageTemplates ?? [],
-        intents: result.follow_up_messages,
-        callerPhoneFromResult: result.caller_phone,
-        callRowPhone: row.phone,
-        clinicName,
-      })
+      const { data: liveRows, error: liveErr } = await supabase
+        .from('convai_live_follow_up_sends')
+        .select('template_id')
+        .eq('conversation_id', row.id)
+
+      if (liveErr) {
+        console.warn('[runCallPostProcessJob] convai_live_follow_up_sends:', liveErr.message)
+      }
+
+      const already = new Set(
+        (liveRows ?? []).map((r) => (r as { template_id?: string }).template_id).filter(Boolean) as string[]
+      )
+      const intents =
+        already.size === 0
+          ? result.follow_up_messages
+          : result.follow_up_messages.filter((i) => !already.has(i.template_id))
+
+      if (intents.length > 0) {
+        await deliverFollowUpMessagesAfterCall({
+          templates: callAiForDelivery.textMessageTemplates ?? [],
+          intents,
+          callerPhoneFromResult: result.caller_phone,
+          callRowPhone: row.phone,
+          clinicName,
+        })
+      }
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error'

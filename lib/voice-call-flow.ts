@@ -11,6 +11,19 @@ export function mergeVoiceCallFlow(
   }
 }
 
+/** Injected when confirmContactReadback is on — voice-optimized email/phone verification. */
+const CONTACT_READBACK_RULES = `Whenever you collect a phone number or email for SMS, email, or a follow-up message, verify it with the caller before you send or call any send tool.
+
+**Phone numbers:** Read back digit by digit (or in short groups of 3–4 digits). Ask clearly if that is correct.
+
+**Email addresses — part before @ (local part):** Confirm **exactly, character by character**: say each letter and each digit; say "dot" for periods, "underscore" for _, "hyphen" for -. Do not skip or guess.
+
+**Email addresses — part after @ (domain):**
+- **Common public providers** (do **not** spell the domain letter-by-letter): gmail.com, googlemail.com, yahoo.com, ymail.com, outlook.com, hotmail.com, live.com, msn.com, icloud.com, me.com, mac.com, aol.com, proton.me, protonmail.com, mail.com, gmx.com, zoho.com, fastmail.com — for these, confirm in natural speech, e.g. "j-o-h-n dot smith at gmail dot com" (local part still letter-by-letter) then "and that is at gmail dot com" without spelling g-m-a-i-l.
+- **Custom, business, or uncommon domains** (anything not in that list, or multi-part like .co.uk, or names that could be confused): treat the **whole domain** as exact — spell it **letter-by-letter** with "dot" between labels (e.g. "s-m-i-t-h law dot com") until the caller confirms.
+
+Then ask one short yes/no: is that all correct? Only after they confirm, proceed to send.`
+
 export const DEFAULT_VOICE_CALL_FLOW: VoiceCallFlowSettings = {
   questionStyle: 'balanced',
   questionNotes: '',
@@ -22,6 +35,7 @@ export const DEFAULT_VOICE_CALL_FLOW: VoiceCallFlowSettings = {
   schedulingNotes: '',
   notificationStyle: 'standard',
   notificationNotes: '',
+  confirmContactReadback: true,
 }
 
 const Q_PRESET: Record<VoiceCallFlowSettings['questionStyle'], string> = {
@@ -42,9 +56,10 @@ const T_PRESET: Record<VoiceCallFlowSettings['transferStyle'], string> = {
 }
 
 const TX_PRESET: Record<VoiceCallFlowSettings['textStyle'], string> = {
-  confirm_only: 'Only text confirmations the caller agrees to (e.g. appointment time), not unsolicited marketing.',
+  confirm_only:
+    'Only send texts or emails the caller clearly agrees to (e.g. confirmations, links they asked for), not unsolicited marketing. When the live-send tool is available, send during the call as soon as details are confirmed—do not defer to after the call.',
   send_summary:
-    'After the call, you may send a short SMS summary or next-step link if the caller opts in.',
+    'You may send a short SMS summary or next-step link when the caller opts in; send during the call using the live-send tool when it is available, not only after hangup.',
   minimal: 'Avoid texting unless the caller explicitly asks for a text.',
 }
 
@@ -86,6 +101,11 @@ export function expandVoiceCallFlowToGuidance(flow: VoiceCallFlowSettings | unde
     '### Staff notifications',
     N_PRESET[f.notificationStyle],
     f.notificationNotes?.trim() ? `Additional notes: ${f.notificationNotes.trim()}` : '',
+    '',
+    '### Contact confirmation',
+    f.confirmContactReadback === false
+      ? 'Do not require an extra read-back step for phone or email unless the caller seems uncertain.'
+      : CONTACT_READBACK_RULES,
   ]
   return parts.filter((p) => p !== '').join('\n')
 }

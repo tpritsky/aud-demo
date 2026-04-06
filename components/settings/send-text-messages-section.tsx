@@ -30,6 +30,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type {
   ClinicCallAiSettings,
+  FollowUpSendTiming,
   VoiceTextDeliveryChannels,
   VoiceTextMessageKind,
   VoiceTextMessageTemplate,
@@ -86,14 +87,9 @@ const emptyDraft = (kind: VoiceTextMessageKind): Draft =>
 export function SendTextMessagesSection({
   callAi,
   onChange,
-  onTemplatesCommit,
 }: {
   callAi: ClinicCallAiSettings
   onChange: (next: ClinicCallAiSettings) => void
-  /**
-   * Persist templates to the server. Return true when the PATCH succeeded.
-   */
-  onTemplatesCommit?: (next: ClinicCallAiSettings) => boolean | Promise<boolean>
 }) {
   const flow = callAi.callFlow
   const templates = callAi.textMessageTemplates ?? []
@@ -108,13 +104,9 @@ export function SendTextMessagesSection({
   const [dialogMode, setDialogMode] = useState<'closed' | 'add' | 'edit'>('closed')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(emptyDraft('sms'))
-  const [templatePersisting, setTemplatePersisting] = useState(false)
 
-  const applyTemplates = async (next: VoiceTextMessageTemplate[]): Promise<boolean> => {
-    const updated = { ...callAi, textMessageTemplates: next }
-    onChange(updated)
-    if (!onTemplatesCommit) return true
-    return onTemplatesCommit(updated)
+  const setTemplates = (next: VoiceTextMessageTemplate[]) => {
+    onChange({ ...callAi, textMessageTemplates: next })
   }
 
   const setFlow = (patch: Partial<ClinicCallAiSettings['callFlow']>) => {
@@ -155,7 +147,7 @@ export function SendTextMessagesSection({
     )
   }, [draft])
 
-  const saveDraft = async () => {
+  const saveDraft = () => {
     if (!canSave) return
     const base: VoiceTextMessageTemplate = {
       id: editingId ?? newTemplateId(),
@@ -175,21 +167,16 @@ export function SendTextMessagesSection({
             )
           })()
         : [...templates, { ...base, enabled: true }]
-    setTemplatePersisting(true)
-    try {
-      const ok = await applyTemplates(nextList)
-      if (ok) closeDialog()
-    } finally {
-      setTemplatePersisting(false)
-    }
+    setTemplates(nextList)
+    closeDialog()
   }
 
   const toggleEnabled = (id: string, enabled: boolean) => {
-    void applyTemplates(templates.map((t) => (t.id === id ? { ...t, enabled } : t)))
+    setTemplates(templates.map((t) => (t.id === id ? { ...t, enabled } : t)))
   }
 
   const remove = (id: string) => {
-    void applyTemplates(templates.filter((t) => t.id !== id))
+    setTemplates(templates.filter((t) => t.id !== id))
   }
 
   const isSchedulingUI = dialogMode !== 'closed' && draft.kind === 'scheduling_link'
@@ -254,8 +241,43 @@ export function SendTextMessagesSection({
     }
   }
 
+  const followTiming: FollowUpSendTiming =
+    callAi.followUpSendTiming === 'after_call' ? 'after_call' : 'during_call'
+
   return (
     <div className="space-y-6 max-w-3xl">
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+        <div className="px-4 py-4 sm:px-5 space-y-3">
+          <div className="space-y-2">
+            <Label id="follow-up-timing-label">When to send messages</Label>
+            <Select
+              value={followTiming}
+              onValueChange={(v) =>
+                onChange({
+                  ...callAi,
+                  followUpSendTiming: v as FollowUpSendTiming,
+                })
+              }
+            >
+              <SelectTrigger id="follow-up-timing" className="max-w-md" aria-labelledby="follow-up-timing-label">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="during_call">During the call (as soon as they agree)</SelectItem>
+                <SelectItem value="after_call">After the call (from the transcript)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
+              <span className="font-medium text-foreground">During the call</span> uses the live tool: your server
+              sends email with <span className="font-medium text-foreground">Resend</span> and SMS with Twilio — same
+              Resend setup as &quot;Send a test message&quot; below (<code className="text-[11px]">RESEND_API_KEY</code>
+              ). <span className="font-medium text-foreground">After the call</span> sends only after the
+              conversation is processed. Save receptionist settings, then use <span className="font-medium text-foreground">Push to phone line</span> to update the agent.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
         <div className="border-b border-border px-4 py-3 sm:px-5">
           <DropdownMenu>
@@ -290,7 +312,7 @@ export function SendTextMessagesSection({
           {templates.length === 0 ? (
             <p className="px-4 py-8 sm:px-5 text-sm text-muted-foreground text-center">
               No messages yet. Use <span className="font-medium text-foreground">Add message</span> to create texts or
-              emails your receptionist can send after the call.
+              emails your receptionist can send when the caller agrees (live or after the call).
             </p>
           ) : (
             templates.map((t) => (
@@ -352,6 +374,24 @@ export function SendTextMessagesSection({
               </div>
             ))
           )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+        <div className="px-4 py-4 sm:px-5 sm:py-4 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="min-w-0 flex-1 space-y-1">
+            <h3 className="font-semibold text-foreground">Confirm phone &amp; email aloud</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Phone: digit-by-digit readback. Email: spell the part before @ letter-by-letter; for Gmail, Yahoo,
+              Outlook, iCloud, etc., confirm the domain as a phrase (e.g. &quot;at gmail dot com&quot;); for custom
+              domains, spell the domain letter-by-letter too.
+            </p>
+          </div>
+          <Switch
+            checked={flow.confirmContactReadback !== false}
+            onCheckedChange={(c) => setFlow({ confirmContactReadback: c === true })}
+            className="shrink-0 data-[state=checked]:bg-emerald-600"
+          />
         </div>
       </div>
 
@@ -464,7 +504,8 @@ export function SendTextMessagesSection({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                After the call, we send only the channels the caller agreed to and we have contact info for.
+                We send only the channels the caller agreed to and we have contact info for (during the call when
+                enabled, otherwise after the call from the transcript).
               </p>
             </div>
             <div className="space-y-2">
@@ -535,20 +576,11 @@ export function SendTextMessagesSection({
             </Button>
             <Button
               type="button"
-              onClick={() => void saveDraft()}
-              disabled={!canSave || templatePersisting}
+              onClick={saveDraft}
+              disabled={!canSave}
               className="bg-emerald-600 hover:bg-emerald-600/90 text-white"
             >
-              {templatePersisting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving…
-                </>
-              ) : dialogMode === 'edit' ? (
-                'Save changes'
-              ) : (
-                'Add message'
-              )}
+              {dialogMode === 'edit' ? 'Save changes' : 'Add message'}
             </Button>
           </DialogFooter>
         </DialogContent>

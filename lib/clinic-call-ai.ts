@@ -55,6 +55,7 @@ export const DEFAULT_CALL_AI_SETTINGS: ClinicCallAiSettings = {
   contextLayers: [],
   knowledgeItems: [],
   textMessageTemplates: [],
+  followUpSendTiming: 'during_call',
   callFlow: { ...DEFAULT_VOICE_CALL_FLOW },
 }
 
@@ -125,6 +126,10 @@ export function mergeCallAiSettings(
       partial?.textMessageTemplates !== undefined
         ? partial.textMessageTemplates
         : DEFAULT_CALL_AI_SETTINGS.textMessageTemplates,
+    followUpSendTiming:
+      partial?.followUpSendTiming === 'after_call' || partial?.followUpSendTiming === 'during_call'
+        ? partial.followUpSendTiming
+        : DEFAULT_CALL_AI_SETTINGS.followUpSendTiming,
     callFlow: mergeVoiceCallFlow(undefined, partial?.callFlow),
   }
   return merged
@@ -389,6 +394,7 @@ function sanitizeCallFlowPatch(raw: unknown): Partial<ClinicCallAiSettings['call
   if (typeof o.textNotes === 'string') out.textNotes = o.textNotes.slice(0, 4000)
   if (typeof o.schedulingNotes === 'string') out.schedulingNotes = o.schedulingNotes.slice(0, 4000)
   if (typeof o.notificationNotes === 'string') out.notificationNotes = o.notificationNotes.slice(0, 4000)
+  if (typeof o.confirmContactReadback === 'boolean') out.confirmContactReadback = o.confirmContactReadback
   return out
 }
 
@@ -430,6 +436,9 @@ export function sanitizeCallAiIncomingPatch(
   }
   if (Array.isArray(incoming.textMessageTemplates)) {
     sanitized.textMessageTemplates = sanitizeTextMessageTemplates(incoming.textMessageTemplates)
+  }
+  if (incoming.followUpSendTiming === 'after_call' || incoming.followUpSendTiming === 'during_call') {
+    sanitized.followUpSendTiming = incoming.followUpSendTiming
   }
   if (incoming.callFlow !== undefined && typeof incoming.callFlow === 'object') {
     const p = sanitizeCallFlowPatch(incoming.callFlow)
@@ -621,6 +630,11 @@ export function buildVoiceDynamicVariables(opts: {
     formatCustomSummaryForLiveVoice(opts.callAi),
     formatPostProcessingForLiveVoice(opts.callAi),
     formatTextTemplatesUltraCompact(opts.callAi),
+    (opts.callAi.textMessageTemplates?.some((t) => t.enabled !== false) ?? false)
+      ? opts.callAi.followUpSendTiming === 'after_call'
+        ? 'Follow-ups: Staff chose AFTER the call only — do not use send_follow_up_now; collect consent and details; tell the caller the message will be sent after the call ends.'
+        : 'Follow-ups: Staff chose DURING the call — use send_follow_up_now when the tool exists for immediate SMS/email via the app (Resend/Twilio); do not promise after-call-only delivery.'
+      : '',
     opts.callAi.outboundPlaybook?.trim(),
     opts.callAi.inboundPlaybook?.trim(),
     knowledge && `Knowledge:\n${knowledge}`,

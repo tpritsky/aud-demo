@@ -181,13 +181,6 @@ export function AgentWorkspaceTab({ section, superAdminClinicId = null }: Props)
     await persistReceptionistSettings(callAi)
   }
 
-  const commitTextTemplates = useCallback(
-    async (next: ClinicCallAiSettings) => {
-      return persistReceptionistSettings(next, 'Message settings saved')
-    },
-    [persistReceptionistSettings]
-  )
-
   /** Picking a line saves immediately so the line is assigned to this clinic’s agent (no extra Save click). */
   const persistLinePick = useCallback(
     async (phoneNumberId: string, nextFacts: ClinicFactsFields) => {
@@ -365,16 +358,13 @@ export function AgentWorkspaceTab({ section, superAdminClinicId = null }: Props)
                   Send text/email messages
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1 max-w-2xl leading-relaxed">
-                  Your receptionist can send callers SMS or plain-text email with scheduling links, website info, and
-                  more—after the call when they agree.
+                  Your receptionist can send SMS or plain-text email with scheduling links and more. After you push to
+                  the phone line, eligible messages can go out during the call when the caller agrees; anything not sent
+                  live can still go after the call from the transcript.
                 </p>
               </div>
               <div className="p-4 sm:p-5">
-                <SendTextMessagesSection
-                  callAi={callAi}
-                  onChange={setCallAi}
-                  onTemplatesCommit={commitTextTemplates}
-                />
+                <SendTextMessagesSection callAi={callAi} onChange={setCallAi} />
               </div>
             </div>
           ) : (

@@ -3,6 +3,7 @@ import { normalizePhoneNumber } from '@/lib/phone-format'
 import type { VoiceTextMessageTemplate, VoiceTextDeliveryChannels } from '@/lib/types'
 import type { FollowUpMessageIntent } from '@/lib/ai/call-post-process'
 import { sendTwilioSms } from '@/lib/server/twilio-sms'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -76,5 +77,114 @@ export async function deliverFollowUpMessagesAfterCall(opts: {
         console.error('[deliverFollowUp] email failed', tpl.id, e)
       }
     }
+  }
+}
+
+export type LiveFollowUpToolParams = {
+  template_id: string
+  caller_confirmed: boolean
+  send_sms?: boolean
+  send_email?: boolean
+  destination_email?: string
+  caller_phone_e164?: string
+}
+
+/**
+ * Send one follow-up during a live ConvAI call (webhook tool). Records a row so post-call delivery skips duplicates.
+ */
+export async function deliverFollowUpFromLiveTool(opts: {
+  supabase: SupabaseClient
+  conversationId: string
+  clinicName?: string
+  templates: VoiceTextMessageTemplate[]
+  params: LiveFollowUpToolParams
+}): Promise<{ ok: true; result: string } | { ok: false; result: string }> {
+  const { supabase, conversationId, clinicName, templates, params } = opts
+  if (!params.caller_confirmed) {
+    return { ok: false, result: 'Not sent: caller_confirmed must be true.' }
+  }
+  const tpl = templates.find((t) => t.id === params.template_id)
+  if (!tpl || tpl.enabled === false) {
+    return { ok: false, result: 'Not sent: unknown or disabled template_id.' }
+  }
+
+  const delivery = effectiveDelivery(tpl)
+  let wantSms = params.send_sms === true && (delivery === 'sms' || delivery === 'both')
+  let wantEmail = params.send_email === true && (delivery === 'email' || delivery === 'both')
+  if (delivery === 'sms') wantEmail = false
+  if (delivery === 'email') wantSms = false
+
+  if (!wantSms && !wantEmail) {
+    return {
+      ok: false,
+      result:
+        'Not sent: choose send_sms and/or send_email consistent with this template’s delivery channels.',
+    }
+  }
+
+  const body = tpl.message.trim().slice(0, 1600)
+  const sent: string[] = []
+
+  if (wantSms) {
+    const raw = params.caller_phone_e164?.trim() ?? ''
+    const e164 = raw ? normalizePhoneNumber(raw) : ''
+    if (!e164.startsWith('+') || e164.replace(/\D/g, '').length < 10) {
+      return { ok: false, result: 'Not sent: need a valid E.164 caller_phone_e164 for SMS.' }
+    }
+    try {
+      await sendTwilioSms({ to: e164, body })
+      sent.push('SMS')
+    } catch (e) {
+      console.error('[deliverFollowUp live] SMS failed', tpl.id, e)
+      return { ok: false, result: 'SMS send failed; try again or send after the call.' }
+    }
+  }
+
+  if (wantEmail) {
+    if (!process.env.RESEND_API_KEY?.trim()) {
+      return {
+        ok: false,
+        result:
+          'Email is not configured: set RESEND_API_KEY on the server (same as Settings → test message).',
+      }
+    }
+    const email = params.destination_email?.trim().toLowerCase() ?? ''
+    if (!email || !EMAIL_RE.test(email)) {
+      return { ok: false, result: 'Not sent: need a valid destination_email for email delivery.' }
+    }
+    const subjectBase = tpl.label.trim() || 'Message from your call'
+    const subject = `${clinicName?.trim() ? `${clinicName.trim()} — ` : ''}${subjectBase}`.slice(0, 200)
+    try {
+      await sendTestEmail({
+        to: email,
+        subject,
+        body: tpl.message.trim().slice(0, 8000),
+      })
+      sent.push('email')
+    } catch (e) {
+      console.error('[deliverFollowUp live] email failed', tpl.id, e)
+      const msg = e instanceof Error ? e.message : ''
+      if (msg.includes('RESEND_NOT_CONFIGURED')) {
+        return {
+          ok: false,
+          result:
+            'Email provider (Resend) is not configured. An admin must set RESEND_API_KEY — same as the dashboard test message.',
+        }
+      }
+      return { ok: false, result: 'Email send failed; try again or send after the call.' }
+    }
+  }
+
+  const { error: dedupeErr } = await supabase.from('convai_live_follow_up_sends').upsert(
+    { conversation_id: conversationId, template_id: tpl.id },
+    { onConflict: 'conversation_id,template_id' }
+  )
+  if (dedupeErr) {
+    console.warn('[deliverFollowUp live] dedupe insert:', dedupeErr.message)
+  }
+
+  return {
+    ok: true,
+    result: `Sent ${sent.join(' and ')} for “${tpl.label.trim()}”.`,
   }
 }
