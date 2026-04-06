@@ -49,7 +49,17 @@ export async function fetchConvaiConversationAgentId(
     { headers: { 'xi-api-key': apiKey.trim() } }
   )
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
+    if (process.env.DEBUG_CONVAI_FOLLOWUP === '1') {
+      const snippet = (await res.text()).slice(0, 500)
+      console.error(
+        '[convai conversation][debug] status=',
+        res.status,
+        'conversation=',
+        cid.slice(0, 16),
+        'body=',
+        snippet || '(empty)'
+      )
+    } else if (res.status === 401 || res.status === 403) {
       console.error(
         '[convai conversation] ElevenLabs returned',
         res.status,

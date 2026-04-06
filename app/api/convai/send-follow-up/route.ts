@@ -22,6 +22,10 @@ function parseToolBody(raw: unknown): {
   }
 }
 
+function followUpDebug(): boolean {
+  return process.env.DEBUG_CONVAI_FOLLOWUP === '1'
+}
+
 export async function POST(request: NextRequest) {
   let body: unknown
   try {
@@ -32,6 +36,17 @@ export async function POST(request: NextRequest) {
 
   const parsed = parseToolBody(body)
   const conversationId = typeof parsed.conversation_id === 'string' ? parsed.conversation_id.trim() : ''
+  if (followUpDebug()) {
+    const p = parsed.parameters
+    console.error(
+      '[convai/send-follow-up][debug] hit conversation_id=',
+      conversationId.slice(0, 20),
+      'template_id=',
+      p && typeof p === 'object' && typeof (p as { template_id?: string }).template_id === 'string'
+        ? (p as { template_id: string }).template_id.slice(0, 12)
+        : '(none)'
+    )
+  }
   if (!conversationId) {
     return NextResponse.json({ error: 'conversation_id required' }, { status: 400 })
   }
@@ -110,6 +125,10 @@ export async function POST(request: NextRequest) {
     templates: callAi.textMessageTemplates ?? [],
     params,
   })
+
+  if (followUpDebug()) {
+    console.error('[convai/send-follow-up][debug] deliver ok=', out.ok, 'result_len=', out.result.length)
+  }
 
   return NextResponse.json({ result: out.result })
 }
