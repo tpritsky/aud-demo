@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -171,6 +172,26 @@ const stats = [
   { value: '< 2 min', label: 'Typical handle time' },
   { value: '4.8/5', label: 'Caller satisfaction (demo)' },
 ]
+
+/** Patient reviews — swap `quote` for exact wording from your public review pages when available. */
+const LANDING_REVIEWS = [
+  {
+    quote:
+      'Everyone is so welcoming and professional. Scheduling is easy and the front desk always makes us feel like a priority.',
+    author: 'Monica Hernandez',
+    practice: 'Tracy Dental Care',
+    imageSrc:
+      'https://cdcssl.ibsrv.net/ibimg/smb/250x250_80/webmgr/15/r/y/631f6e0b3cbb7_IMG6831_20220912_1736.jpg.webp?d8ebfc918a062dc4b82b5184c64caa15',
+  },
+  {
+    quote:
+      'The staff is friendly and thorough—they take time to explain treatment and the whole visit feels organized from start to finish.',
+    author: 'Erline Poerwanto',
+    practice: 'Brookside Dental Care',
+    imageSrc:
+      'https://cdcssl.ibsrv.net/ibimg/smb/900x1200_80/webmgr/1o/p/j/erline20poerwanto.jpg.webp?efe4c64247ff2d1181963e1c4860c6b0',
+  },
+] as const
 
 type DemoLine = { role: 'agent' | 'user'; text: string }
 
@@ -503,6 +524,9 @@ export function AudiologyLanding() {
             <a href="#features" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
               Features
             </a>
+            <a href="#reviews" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+              Reviews
+            </a>
             <a href="#pricing" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
               Pricing
             </a>
@@ -641,6 +665,46 @@ export function AudiologyLanding() {
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground sm:mt-2 sm:text-sm">
                   {feature.description}
                 </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="reviews"
+        className="scroll-mt-16 border-t border-border/40 bg-background py-12 lg:py-16"
+      >
+        <div className="container mx-auto px-4 lg:px-8">
+          <div className="mx-auto mb-8 max-w-2xl text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Patient voices</p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+              What patients are saying
+            </h2>
+          </div>
+          <div className="mx-auto grid max-w-4xl gap-6 sm:gap-8 md:grid-cols-2">
+            {LANDING_REVIEWS.map((r) => (
+              <div
+                key={r.author}
+                className="flex flex-col rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6"
+              >
+                <p className="flex-1 leading-relaxed text-muted-foreground">&ldquo;{r.quote}&rdquo;</p>
+                <div className="mt-6 flex items-center gap-3 border-t border-border/60 pt-5">
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full ring-2 ring-primary/15 ring-offset-2 ring-offset-card">
+                    <Image
+                      src={r.imageSrc}
+                      alt={`${r.author}, ${r.practice}`}
+                      width={112}
+                      height={112}
+                      className="h-full w-full object-cover"
+                      sizes="56px"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground">{r.author}</div>
+                    <div className="text-xs text-muted-foreground">{r.practice}</div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -916,6 +980,11 @@ export function AudiologyLanding() {
                 <li>
                   <a href="#features" className="transition-colors hover:text-primary">
                     Features
+                  </a>
+                </li>
+                <li>
+                  <a href="#reviews" className="transition-colors hover:text-primary">
+                    Reviews
                   </a>
                 </li>
                 <li>
