@@ -589,6 +589,7 @@ export function AudiologyLanding() {
 
           <h1 className="mx-auto max-w-4xl text-balance text-4xl font-bold leading-[1.08] tracking-tight text-foreground sm:text-5xl lg:text-6xl lg:leading-[1.06]">
             The AI voice receptionist that <span className="text-primary">answers every call</span>
+            {' '}
             <br className="hidden sm:block" />
             <span className="sm:ml-2">while </span>
             <span className="text-primary">you focus on what matters</span>
@@ -683,7 +684,10 @@ export function AudiologyLanding() {
         </div>
       </section>
 
-      <section id="testimonials" className="scroll-mt-16 border-t border-border/40 bg-background pt-10 pb-16 lg:pt-12 lg:pb-20">
+      <section
+        id="testimonials"
+        className="scroll-mt-16 border-t border-border/40 bg-background pt-10 pb-16 max-md:hidden lg:pt-12 lg:pb-20"
+      >
         <div className="container mx-auto px-4 lg:px-8">
           <div className="mx-auto mb-8 max-w-2xl text-center">
             <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Trusted by busy front offices</h2>
