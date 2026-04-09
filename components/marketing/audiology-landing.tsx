@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -171,6 +172,28 @@ const stats = [
   { value: '< 2 min', label: 'Typical handle time' },
   { value: '4.8/5', label: 'Caller satisfaction (demo)' },
 ]
+
+/** Staff / admin customers on Vocalis — swap `quote` for approved wording when you have final copy. */
+const LANDING_REVIEWS = [
+  {
+    quote:
+      'Our phones used to hijack the whole morning. With Vocalis handling routine calls and scheduling questions, I finally get blocks of time for patients at the desk—and callbacks don’t pile up the way they used to.',
+    author: 'Monica Hernandez',
+    role: 'Front office',
+    organization: 'Tracy Dental Care',
+    imageSrc:
+      'https://cdcssl.ibsrv.net/ibimg/smb/250x250_80/webmgr/15/r/y/631f6e0b3cbb7_IMG6831_20220912_1736.jpg.webp?d8ebfc918a062dc4b82b5184c64caa15',
+  },
+  {
+    quote:
+      'Callers get consistent answers after hours and we’re not playing phone tag. It’s been a relief for our front desk—less chaos, clearer handoffs when someone does need to jump in.',
+    author: 'Erline Poerwanto',
+    role: 'Office coordinator',
+    organization: 'Brookside Dental Care',
+    imageSrc:
+      'https://cdcssl.ibsrv.net/ibimg/smb/900x1200_80/webmgr/1o/p/j/erline20poerwanto.jpg.webp?efe4c64247ff2d1181963e1c4860c6b0',
+  },
+] as const
 
 type DemoLine = { role: 'agent' | 'user'; text: string }
 
@@ -503,6 +526,9 @@ export function AudiologyLanding() {
             <a href="#features" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
               Features
             </a>
+            <a href="#reviews" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+              Reviews
+            </a>
             <a href="#pricing" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
               Pricing
             </a>
@@ -641,6 +667,51 @@ export function AudiologyLanding() {
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground sm:mt-2 sm:text-sm">
                   {feature.description}
                 </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="reviews"
+        className="scroll-mt-16 border-t border-border/40 bg-background py-12 lg:py-16"
+      >
+        <div className="container mx-auto px-4 lg:px-8">
+          <div className="mx-auto mb-8 max-w-2xl text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Customer stories</p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+              From teams using Vocalis
+            </h2>
+            <p className="mt-3 text-sm text-muted-foreground sm:text-base">
+              Secretaries, coordinators, and front-desk staff at practices that run on Vocalis.
+            </p>
+          </div>
+          <div className="mx-auto grid max-w-4xl gap-6 sm:gap-8 md:grid-cols-2">
+            {LANDING_REVIEWS.map((r) => (
+              <div
+                key={r.author}
+                className="flex flex-col rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6"
+              >
+                <p className="flex-1 leading-relaxed text-muted-foreground">&ldquo;{r.quote}&rdquo;</p>
+                <div className="mt-6 flex items-center gap-3 border-t border-border/60 pt-5">
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full ring-2 ring-primary/15 ring-offset-2 ring-offset-card">
+                    <Image
+                      src={r.imageSrc}
+                      alt={`${r.author}, ${r.role}, ${r.organization}`}
+                      width={112}
+                      height={112}
+                      className="h-full w-full object-cover"
+                      sizes="56px"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground">{r.author}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {r.role}, {r.organization}
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
