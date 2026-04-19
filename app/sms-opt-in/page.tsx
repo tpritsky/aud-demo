@@ -1,10 +1,13 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
+const SMS_NUMBER_DISPLAY = '(855) 901-6635'
+const SMS_NUMBER_TEL = '+18559016635'
+
 export const metadata: Metadata = {
-  title: 'SMS keyword opt-in',
+  title: 'Text updates from your clinic',
   description:
-    'Public documentation of text-to-join (keyword) consent for informational SMS from Vocalis-powered practices.',
+    'How to opt in to informational text messages by texting START. Message frequency, rates, STOP, and HELP.',
 }
 
 export default function SmsKeywordOptInPage() {
@@ -19,77 +22,76 @@ export default function SmsKeywordOptInPage() {
 
         <header className="mb-10 border-b border-zinc-200 pb-8">
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            SMS keyword opt-in
+            Get text updates from your clinic
           </h1>
           <p className="mt-3 text-lg font-medium text-muted-foreground">
-            Patients join by texting a keyword to the practice&apos;s messaging number after reading the disclosure below
-            (or the same language on in-office signage, intake materials, or the practice&apos;s own website).
+            You can receive appointment reminders and other helpful notices by text. Read the details below, then text{' '}
+            <span className="font-mono font-semibold text-foreground">START</span> from your mobile phone to opt in.
           </p>
         </header>
 
         <div className="space-y-10 text-base leading-relaxed text-muted-foreground">
           <section className="space-y-4">
-            <h2 className="text-xl font-bold text-foreground">Call to action</h2>
+            <h2 className="text-xl font-bold text-foreground">How to join</h2>
             <p className="text-foreground">
-              Consent is collected when the patient sends the keyword from their mobile phone. Before texting, they see the
-              full disclosure—included on this page and mirrored wherever the practice promotes the program (front desk sign,
-              visit summary, practice site, etc.).
+              You may see the same information on a sign at your clinic, on paperwork, or on your provider&apos;s website.
+              When you&apos;re ready, send the keyword from the phone where you want to receive messages.
             </p>
 
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-6 text-foreground shadow-sm">
               <p className="text-sm font-semibold uppercase tracking-wide text-emerald-800">Text to join</p>
               <p className="mt-4 text-lg font-bold leading-snug">
                 Text <span className="font-mono text-emerald-900">START</span> to{' '}
-                <span className="whitespace-nowrap font-mono text-emerald-900">[your toll-free number]</span>
+                <a
+                  href={`sms:${SMS_NUMBER_TEL}?body=START`}
+                  className="whitespace-nowrap font-mono text-emerald-900 underline decoration-emerald-700/40 underline-offset-2 hover:text-emerald-950"
+                >
+                  {SMS_NUMBER_DISPLAY}
+                </a>
               </p>
               <p className="mt-4 text-sm leading-relaxed">
-                to receive automated informational messages from <span className="font-semibold">[Practice name]</span>,
-                including appointment reminders and operational notices. Message frequency varies. Message and data rates may
-                apply. Reply <span className="font-mono font-semibold">STOP</span> to cancel;{' '}
-                <span className="font-mono font-semibold">HELP</span> for help. Consent is not a condition of purchase.
-                See the practice&apos;s privacy policy and terms where linked on their website or at the office.
+                By texting <span className="font-mono font-semibold">START</span>, you agree to receive automated
+                informational messages from your clinic—including appointment reminders and operational notices—at this number.
+                Message frequency varies. Message and data rates may apply. Reply{' '}
+                <span className="font-mono font-semibold">STOP</span> anytime to unsubscribe;{' '}
+                <span className="font-mono font-semibold">HELP</span> for help. Signing up for texts is not required to buy
+                goods or services. Ask your clinic where to find their privacy policy and terms.
               </p>
             </div>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-foreground">How consent works</h2>
+            <h2 className="text-xl font-bold text-foreground">What happens next</h2>
             <ol className="list-decimal space-y-2 pl-5 text-foreground">
-              <li>The patient reads the disclosure (this page or equivalent materials).</li>
+              <li>You read the disclosure above (here or wherever your clinic shares it).</li>
               <li>
-                From their mobile phone, they send the keyword <span className="font-mono font-semibold">START</span> (or the
-                keyword the practice assigns) to the verified toll-free number used for that practice&apos;s messages.
+                You text <span className="font-mono font-semibold">START</span> to{' '}
+                <span className="font-mono font-semibold">{SMS_NUMBER_DISPLAY}</span> from your mobile phone.
               </li>
               <li>
-                They receive an automated reply confirming enrollment; that message repeats how to opt out (
-                <span className="font-mono font-semibold">STOP</span>) and get help (<span className="font-mono font-semibold">HELP</span>
-                ).
+                You&apos;ll get an automated reply confirming you&apos;re enrolled. That message will remind you how to stop
+                messages (<span className="font-mono font-semibold">STOP</span>) and how to get help (
+                <span className="font-mono font-semibold">HELP</span>).
               </li>
             </ol>
             <p>
-              Programs that use a second confirmation step (e.g. &quot;Reply YES to confirm&quot;) document that step in the
-              same way and include it in the welcome message flow.
+              If your clinic uses an extra confirmation step (for example, asking you to reply <span className="font-mono">YES</span>
+              ), follow the instructions in that message.
             </p>
           </section>
 
           <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-5">
-            <h2 className="text-xl font-bold text-foreground">Opt-out and help</h2>
+            <h2 className="text-xl font-bold text-foreground">Stop messages or get help</h2>
             <p>
-              Recipients may opt out at any time by replying{' '}
-              <span className="font-mono font-semibold text-foreground">STOP</span> to any message. Reply{' '}
-              <span className="font-mono font-semibold text-foreground">HELP</span> for assistance. Practices honor opt-outs in
-              line with carrier and applicable rules.
+              To stop texts, reply <span className="font-mono font-semibold text-foreground">STOP</span> to any message you
+              receive from us. To get help, reply <span className="font-mono font-semibold text-foreground">HELP</span>.
             </p>
           </section>
 
           <section className="space-y-2 text-sm text-zinc-500">
             <p>
-              Vocalis provides software for healthcare and service businesses. Each practice replaces bracketed placeholders
-              with its legal name and verified messaging number and keeps its disclosures consistent across web, signage, and
-              intake.
-            </p>
-            <p>
-              Questions:{' '}
+              Vocalis provides the technology your clinic uses to send these messages. If something looks wrong or you have a
+              question about this page, email{' '}
               <a href="mailto:support@vocalis.team" className="font-semibold text-emerald-700 hover:text-emerald-800">
                 support@vocalis.team
               </a>
