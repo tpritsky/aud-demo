@@ -6,7 +6,7 @@ import { useAppStore } from '@/lib/store'
 
 /** Routes that must not trigger redirect to the clinic setup wizard. */
 const BYPASS =
-  /^\/(get-started|accept-invite|reset-password|request-access|ortho|view-as|help)(\/|$)/
+  /^\/(get-started|accept-invite|reset-password|request-access|ortho|view-as|help|sms-opt-in)(\/|$)/
 
 export function ClinicOnboardingGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
