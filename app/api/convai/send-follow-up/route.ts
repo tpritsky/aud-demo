@@ -11,15 +11,65 @@ import {
   findClinicIdByElevenLabsAgentId,
 } from '@/lib/server/convai-resolve-clinic'
 
-function parseToolBody(raw: unknown): {
-  conversation_id?: string
-  parameters?: LiveFollowUpToolParams & Record<string, unknown>
-} {
-  if (!raw || typeof raw !== 'object') return {}
-  return raw as {
-    conversation_id?: string
-    parameters?: LiveFollowUpToolParams & Record<string, unknown>
+/** LLM / JSON sometimes sends "true" instead of true. */
+function coerceBool(v: unknown): boolean {
+  if (v === true || v === 1) return true
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase()
+    return s === 'true' || s === '1' || s === 'yes'
   }
+  return false
+}
+
+/**
+ * ElevenLabs usually sends { conversation_id, parameters: { ... } }.
+ * Some clients flatten tool args + conversation_id at the top level — accept both.
+ */
+function parseToolBody(raw: unknown):
+  | { ok: true; conversationId: string; paramObj: Record<string, unknown> }
+  | { ok: false; response: ReturnType<typeof NextResponse.json> } {
+  if (!raw || typeof raw !== 'object') {
+    return { ok: false, response: NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
+  }
+  const b = raw as Record<string, unknown>
+  const data = b.data && typeof b.data === 'object' ? (b.data as Record<string, unknown>) : null
+  const conversationId =
+    (typeof b.conversation_id === 'string' && b.conversation_id.trim()) ||
+    (data && typeof data.conversation_id === 'string' && data.conversation_id.trim()) ||
+    ''
+
+  if (!conversationId) {
+    return { ok: false, response: NextResponse.json({ error: 'conversation_id required' }, { status: 400 }) }
+  }
+
+  const toolKeys = [
+    'template_id',
+    'caller_confirmed',
+    'send_sms',
+    'send_email',
+    'destination_email',
+    'caller_phone_e164',
+  ] as const
+  const merge: Record<string, unknown> = {}
+  if (b.parameters && typeof b.parameters === 'object' && b.parameters !== null) {
+    Object.assign(merge, b.parameters as Record<string, unknown>)
+  }
+  if (data) {
+    for (const k of toolKeys) {
+      const v = (data as Record<string, unknown>)[k]
+      if (v !== undefined && v !== null) merge[k] = v
+    }
+  }
+  for (const k of toolKeys) {
+    const v = b[k]
+    if (v !== undefined && v !== null && (merge[k] === undefined || merge[k] === '')) {
+      merge[k] = v
+    }
+  }
+  if (Object.keys(merge).length === 0) {
+    return { ok: false, response: NextResponse.json({ error: 'parameters required' }, { status: 400 }) }
+  }
+  return { ok: true, conversationId, paramObj: merge }
 }
 
 function followUpDebug(): boolean {
@@ -35,32 +85,32 @@ export async function POST(request: NextRequest) {
   }
 
   const parsed = parseToolBody(body)
-  const conversationId = typeof parsed.conversation_id === 'string' ? parsed.conversation_id.trim() : ''
+  if (!parsed.ok) {
+    if (followUpDebug()) {
+      try {
+        console.error('[convai/send-follow-up][debug] bad body shape keys=', body && typeof body === 'object' ? Object.keys(body as object) : [])
+      } catch {
+        // ignore
+      }
+    }
+    return parsed.response
+  }
+
+  const { conversationId, paramObj: p } = parsed
   if (followUpDebug()) {
-    const p = parsed.parameters
     console.error(
       '[convai/send-follow-up][debug] hit conversation_id=',
       conversationId.slice(0, 20),
       'template_id=',
-      p && typeof p === 'object' && typeof (p as { template_id?: string }).template_id === 'string'
-        ? (p as { template_id: string }).template_id.slice(0, 12)
-        : '(none)'
+      typeof p.template_id === 'string' ? p.template_id.slice(0, 12) : '(none)'
     )
-  }
-  if (!conversationId) {
-    return NextResponse.json({ error: 'conversation_id required' }, { status: 400 })
-  }
-
-  const p = parsed.parameters
-  if (!p || typeof p !== 'object') {
-    return NextResponse.json({ error: 'parameters required' }, { status: 400 })
   }
 
   const params: LiveFollowUpToolParams = {
     template_id: typeof p.template_id === 'string' ? p.template_id : '',
-    caller_confirmed: p.caller_confirmed === true,
-    send_sms: p.send_sms === true,
-    send_email: p.send_email === true,
+    caller_confirmed: coerceBool(p.caller_confirmed),
+    send_sms: coerceBool(p.send_sms),
+    send_email: coerceBool(p.send_email),
     destination_email: typeof p.destination_email === 'string' ? p.destination_email : undefined,
     caller_phone_e164: typeof p.caller_phone_e164 === 'string' ? p.caller_phone_e164 : undefined,
   }
@@ -128,6 +178,8 @@ export async function POST(request: NextRequest) {
 
   if (followUpDebug()) {
     console.error('[convai/send-follow-up][debug] deliver ok=', out.ok, 'result_len=', out.result.length)
+  } else if (!out.ok) {
+    console.warn('[convai/send-follow-up] not sent:', out.result.slice(0, 300))
   }
 
   return NextResponse.json({ result: out.result })

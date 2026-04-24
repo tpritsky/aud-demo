@@ -241,13 +241,6 @@ export function AgentConfigurationTab({ superAdminClinicId = null }: AgentConfig
                     className="pl-9"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  E.164 format (e.g. +15551234567). US numbers: 10 digits with optional +1.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Calls appear in your log after ElevenLabs posts the post-call webhook to your app. On local dev,
-                  that URL must be publicly reachable (e.g. tunnel or deployed preview), not plain localhost.
-                </p>
               </div>
               <Button
                 onClick={async () => {

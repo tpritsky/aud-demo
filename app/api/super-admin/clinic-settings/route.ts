@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { assertCallerIsSuperAdmin } from '@/lib/server/super-admin-auth'
 import {
@@ -20,6 +20,7 @@ import {
   clinicAgentConfigEnrichmentChanged,
   enrichClinicSettingsAgentConfig,
 } from '@/lib/server/elevenlabs-line-phone'
+import { runClinicElevenLabsPromptSync } from '@/lib/server/run-clinic-elevenlabs-prompt-sync'
 
 function bearerToken(request: NextRequest): string | null {
   const h = request.headers.get('Authorization')
@@ -274,6 +275,26 @@ export async function PATCH(request: NextRequest) {
     const callAi = mergeCallAiSettings(vertical, partialAi)
 
     const savedSettings = (saved as { settings?: unknown }).settings
+
+    if (
+      elApiKeySa &&
+      (hasCallAi || hasAgentClinicFacts || hasAgentUiPatch || hasCompleteOnboarding || hasVertical)
+    ) {
+      const cid = clinicId
+      const sb = supabase
+      after(() =>
+        runClinicElevenLabsPromptSync({ supabase: sb, clinicId: cid })
+          .then((r) => {
+            if (!r.ran) return
+            const failed = r.results.filter((x) => !x.ok)
+            if (failed.length) {
+              console.warn('[super-admin clinic-settings] ElevenLabs auto-sync failures', failed)
+            }
+          })
+          .catch((e) => console.error('[super-admin clinic-settings] ElevenLabs auto-sync', e))
+      )
+    }
+
     return NextResponse.json({
       clinicId: (saved as { id: string }).id,
       clinicName: (saved as { name: string }).name,

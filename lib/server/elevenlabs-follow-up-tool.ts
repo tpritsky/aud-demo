@@ -6,11 +6,23 @@
 
 export const SEND_FOLLOW_UP_TOOL_NAME = 'send_follow_up_now'
 
+/**
+ * Public https origin for registering the ConvAI webhook tool. Prefer server-only vars so the tool URL
+ * stays correct even if `NEXT_PUBLIC_APP_URL` was wrong at build time; fall back to Vercel’s deployment host.
+ */
 function appBaseUrl(): string | null {
-  const u = process.env.NEXT_PUBLIC_APP_URL?.trim() || ''
-  if (u && !u.includes('localhost')) return u.replace(/\/$/, '')
+  const explicit =
+    process.env.ELEVENLABS_PUBLIC_APP_URL?.trim() ||
+    process.env.SERVER_PUBLIC_APP_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    ''
+  if (explicit && !explicit.toLowerCase().includes('localhost')) {
+    return explicit.replace(/\/$/, '')
+  }
   const v = process.env.VERCEL_URL?.trim()
-  if (v && !v.includes('localhost')) return `https://${v.replace(/\/$/, '')}`
+  if (v && !v.toLowerCase().includes('localhost')) {
+    return `https://${v.replace(/\/$/, '')}`
+  }
   return null
 }
 
