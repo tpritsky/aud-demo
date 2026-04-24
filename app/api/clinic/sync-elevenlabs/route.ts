@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
-import {
-  mergeCallAiSettings,
-  normalizeVertical,
-  parseClinicSettingsBlob,
-} from '@/lib/clinic-call-ai'
 import { runClinicElevenLabsPromptSync } from '@/lib/server/run-clinic-elevenlabs-prompt-sync'
 
 function bearer(request: NextRequest): string | null {

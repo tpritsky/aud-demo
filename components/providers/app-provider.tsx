@@ -113,6 +113,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const resetClientAuthState = useCallback(() => {
     userIdRef.current = null
+    authGateCompletedForUserIdRef.current = null
     setIsLoggedIn(false)
     setAuthVerifying(false)
     setAuthBootstrapError(null)
@@ -132,6 +133,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Use ref to prevent concurrent executions of checkDueItems
   const isProcessingRef = useRef(false)
   const userIdRef = useRef<string | null>(null)
+  /**
+   * After a successful gated `loadInitialData` for `userId`, we skip the full "Verifying your account"
+   * path on later session checks in this tab (tab focus, effect re-entrancy, etc.). Cleared on sign-out.
+   * This is a UX flag only; Supabase session + server APIs remain the source of auth truth.
+   */
+  const authGateCompletedForUserIdRef = useRef<string | null>(null)
 
   // NEXT_PUBLIC_* are baked in at build time; missing values → login hits the wrong project or a placeholder.
   useEffect(() => {
@@ -549,7 +556,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const loadInitialDataRef = useRef(loadInitialData)
   loadInitialDataRef.current = loadInitialData
 
-  const runSessionCheck = useCallback(async () => {
+  const runSessionCheck = useCallback(async (options?: { force?: boolean }) => {
+    if (!hasRealSupabaseConfig()) {
+      setIsLoggedIn(false)
+      return
+    }
+
+    const { session: firstRead, error: firstErr } = await getSessionWithBudget(AUTH_BOOTSTRAP_BUDGET_MS)
+
+    if (firstErr && isRefreshTokenAuthError(firstErr)) {
+      console.warn(
+        'Session refresh failed; clearing local session:',
+        firstErr instanceof Error ? firstErr.message : String(firstErr),
+      )
+      await clearLocalSupabaseSession()
+      setIsLoggedIn(false)
+      authGateCompletedForUserIdRef.current = null
+      return
+    }
+
+    if (
+      !options?.force &&
+      firstRead?.user &&
+      authGateCompletedForUserIdRef.current === firstRead.user.id &&
+      userIdRef.current === firstRead.user.id
+    ) {
+      setAuthSessionChecked(true)
+      setAuthBootstrapError(null)
+      return
+    }
+
     const runIdSnapshot = ++authBootstrapRunIdRef.current
     const isStale = () => runIdSnapshot !== authBootstrapRunIdRef.current
 
@@ -561,48 +597,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
       timeoutId = setTimeout(() => resolve('timeout'), AUTH_BOOTSTRAP_BUDGET_MS)
     })
 
-    try {
-      if (!hasRealSupabaseConfig()) {
+    const gateWork = async () => {
+      setAuthSessionChecked(true)
+
+      if (!firstRead?.user) {
         setIsLoggedIn(false)
+        authGateCompletedForUserIdRef.current = null
         return
       }
 
-      const gateWork = async () => {
-        const { session, error } = await getSessionWithBudget(AUTH_BOOTSTRAP_BUDGET_MS)
-
-        if (error && isRefreshTokenAuthError(error)) {
-          console.warn(
-            'Session refresh failed; clearing local session:',
-            error instanceof Error ? error.message : String(error),
-          )
-          await clearLocalSupabaseSession()
+      userIdRef.current = firstRead.user.id
+      setAuthVerifying(true)
+      try {
+        const result = await loadInitialDataRef.current(firstRead.user.id, firstRead.access_token ?? null, {
+          gateLogin: true,
+          bootstrapStrictSla: true,
+          returnAfterGate: true,
+          bootstrapStalenessCheck: isStale,
+        })
+        if (isStale()) return
+        if (!result.ok) {
           setIsLoggedIn(false)
-          return
+          authGateCompletedForUserIdRef.current = null
+        } else {
+          authGateCompletedForUserIdRef.current = firstRead.user.id
         }
-
-        setAuthSessionChecked(true)
-
-        if (!session?.user) {
-          setIsLoggedIn(false)
-          return
-        }
-
-        userIdRef.current = session.user.id
-        setAuthVerifying(true)
-        try {
-          const result = await loadInitialDataRef.current(session.user.id, session.access_token ?? null, {
-            gateLogin: true,
-            bootstrapStrictSla: true,
-            returnAfterGate: true,
-            bootstrapStalenessCheck: isStale,
-          })
-          if (isStale()) return
-          if (!result.ok) setIsLoggedIn(false)
-        } finally {
-          if (!isStale()) setAuthVerifying(false)
-        }
+      } finally {
+        if (!isStale()) setAuthVerifying(false)
       }
+    }
 
+    try {
       const winner = await Promise.race([gateWork().then(() => 'done' as const), timeoutPromise])
       if (timeoutId) clearTimeout(timeoutId)
 
@@ -626,15 +651,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await clearLocalSupabaseSession()
       }
       setIsLoggedIn(false)
+      authGateCompletedForUserIdRef.current = null
     } finally {
       if (timeoutId) clearTimeout(timeoutId)
       setAuthSessionChecked(true)
     }
   }, [resetClientAuthState])
 
+  const runSessionCheckRef = useRef(runSessionCheck)
+  runSessionCheckRef.current = runSessionCheck
+
   const retrySessionBootstrap = useCallback(() => {
     setAuthBootstrapError(null)
-    void runSessionCheck()
+    void runSessionCheck({ force: true })
   }, [runSessionCheck])
 
   useEffect(() => {
@@ -643,7 +672,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     void (async () => {
       try {
-        await runSessionCheck()
+        await runSessionCheckRef.current()
       } catch (e: unknown) {
         if (!isLikelyAbortError(e)) console.error('runSessionCheck:', e)
         if (!cancelled) setAuthSessionChecked(true)
@@ -656,9 +685,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (event === 'INITIAL_SESSION') return
 
       if (event === 'SIGNED_IN' && session?.user) {
-        // GoTrue can emit SIGNED_IN again on tab focus / session recovery. Re-running the login gate
-        // would flash "Verifying your account" and duplicate loads for the same user.
-        if (userIdRef.current === session.user.id) {
+        if (
+          userIdRef.current === session.user.id &&
+          authGateCompletedForUserIdRef.current === session.user.id
+        ) {
           return
         }
         const runIdSnapshot = ++authBootstrapRunIdRef.current
@@ -685,6 +715,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 if (isStale()) return 'stale' as const
                 if (!result.ok) {
                   setIsLoggedIn(false)
+                  authGateCompletedForUserIdRef.current = null
                   return 'failed' as const
                 }
                 signInSucceeded = true
@@ -704,6 +735,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               setAuthSessionChecked(true)
             }
           } else if (winner === 'done' && signInSucceeded && !isStale()) {
+            authGateCompletedForUserIdRef.current = session.user.id
             toast.success('Signed in', { description: 'Your account and permissions are ready.' })
           }
         } catch (e: unknown) {
@@ -727,7 +759,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cancelled = true
       authSubscription?.unsubscribe()
     }
-  }, [resetClientAuthState, runSessionCheck])
+    // Intentionally mount once: re-subscribing would duplicate listeners; runSessionCheck uses runSessionCheckRef.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const refetchProfileFromApi = useCallback(async () => {
     try {
@@ -1115,6 +1149,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     duration: 16_000,
                   })
                 }
+                authGateCompletedForUserIdRef.current = null
                 return 'failed' as const
               }
               return 'done' as const
@@ -1132,6 +1167,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             )
             setAuthSessionChecked(true)
           }
+        } else if (winner === 'done' && session?.user) {
+          authGateCompletedForUserIdRef.current = session.user.id
         }
       } finally {
         if (t) clearTimeout(t)
