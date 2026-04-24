@@ -638,17 +638,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [runSessionCheck])
 
   useEffect(() => {
-    void runSessionCheck().catch((e: unknown) => {
-      if (!isLikelyAbortError(e)) console.error('runSessionCheck:', e)
-      setAuthSessionChecked(true)
-    })
+    let cancelled = false
+    let authSubscription: { unsubscribe: () => void } | null = null
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'INITIAL_SESSION') return
+    void (async () => {
+      try {
+        await runSessionCheck()
+      } catch (e: unknown) {
+        if (!isLikelyAbortError(e)) console.error('runSessionCheck:', e)
+        if (!cancelled) setAuthSessionChecked(true)
+      }
+      if (cancelled) return
+
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'INITIAL_SESSION') return
 
       if (event === 'SIGNED_IN' && session?.user) {
+        // GoTrue can emit SIGNED_IN again on tab focus / session recovery. Re-running the login gate
+        // would flash "Verifying your account" and duplicate loads for the same user.
+        if (userIdRef.current === session.user.id) {
+          return
+        }
         const runIdSnapshot = ++authBootstrapRunIdRef.current
         const isStale = () => runIdSnapshot !== authBootstrapRunIdRef.current
         setAuthBootstrapError(null)
@@ -708,8 +720,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     })
 
+      authSubscription = subscription
+    })()
+
     return () => {
-      subscription.unsubscribe()
+      cancelled = true
+      authSubscription?.unsubscribe()
     }
   }, [resetClientAuthState, runSessionCheck])
 
